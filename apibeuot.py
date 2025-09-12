@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import requests
 import base64
@@ -17,7 +18,7 @@ load_dotenv()
 KLARNA_USERNAME = os.getenv("KLARNA_USERNAME")
 KLARNA_PASSWORD = os.getenv("KLARNA_PASSWORD")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-PUBLIC_URL = os.getenv("PUBLIC_URL")  # 👈 required (must be your Render URL)
+PUBLIC_URL = os.getenv("PUBLIC_URL")
 
 if not OPENAI_API_KEY:
     raise RuntimeError("❌ Missing OPENAI_API_KEY in environment")
@@ -89,7 +90,7 @@ def create_klarna_order(amount: float, service: str, customer_name: str):
         "order_tax_amount": 0,
         "order_lines": [
             {
-                "type": "physical",  # ✅ must be one of Klarna’s accepted types
+                "type": "physical",  # ✅ Klarna requires accepted type
                 "reference": order_id,
                 "name": service,
                 "quantity": 1,
@@ -183,3 +184,10 @@ async def klarna_push(request: Request):
     body = await request.json()
     print(f"💳 Klarna push received for {klarna_order_id}: {body}")
     return {"status": "received", "order_id": klarna_order_id}
+
+# ------------------------------
+# Serve chatbot frontend
+# ------------------------------
+@app.get("/chatbot")
+async def chatbot_ui():
+    return FileResponse("chat.html")
