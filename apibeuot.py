@@ -4,12 +4,12 @@ from pydantic import BaseModel
 import requests
 import base64
 import uuid
-import openai
 import os
 import json
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 import re
+from openai import OpenAI
 
 # ------------------------------
 # Load environment variables
@@ -31,7 +31,7 @@ if not PUBLIC_URL:
 # ------------------------------
 # Config
 # ------------------------------
-openai.api_key = OPENAI_API_KEY
+client = OpenAI(api_key=OPENAI_API_KEY)
 KLARNA_API_URL = "https://api.playground.klarna.com"
 
 # ------------------------------
@@ -42,7 +42,7 @@ app = FastAPI(title="Barbershop Booking AI Agent with Klarna")
 # Enable CORS for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # In production, restrict to your domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -92,7 +92,7 @@ def create_klarna_order(amount: float, service: str, customer_name: str):
         "order_tax_amount": 0,
         "order_lines": [
             {
-                "type": "physical",
+                "type": "physical",  # Klarna requires this type
                 "reference": order_id,
                 "name": service,
                 "quantity": 1,
@@ -137,12 +137,11 @@ async def chatbot_ui():
 async def chat_with_agent(user_input: ChatMessage):
     global conversation_history
 
-    # Save user message to conversation history
+    # Save user message
     conversation_history.append({"role": "user", "content": user_input.message})
 
     try:
-        # Let GPT handle the conversation
-        completion = openai.ChatCompletion.create(
+        completion = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": """
@@ -158,13 +157,10 @@ You are a friendly AI assistant for a barbershop.
             temperature=0.5
         )
 
-        reply = completion.choices[0].message["content"]
-        print("🤖 GPT Reply:", reply)
-
-        # Save assistant reply
+        reply = completion.choices[0].message.content
         conversation_history.append({"role": "assistant", "content": reply})
 
-        # --- Try to detect a JSON booking confirmation in GPT's reply ---
+        # Detect booking JSON inside GPT reply
         match = re.search(r"\{.*\}", reply, re.DOTALL)
         if match:
             try:
