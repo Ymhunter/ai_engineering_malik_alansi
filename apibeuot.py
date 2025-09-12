@@ -17,14 +17,14 @@ load_dotenv()
 KLARNA_USERNAME = os.getenv("KLARNA_USERNAME")
 KLARNA_PASSWORD = os.getenv("KLARNA_PASSWORD")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-PUBLIC_URL = os.getenv("PUBLIC_URL")  # 👈 required (no localhost fallback)
+PUBLIC_URL = os.getenv("PUBLIC_URL")  # 👈 required (must be your Render URL)
 
 if not OPENAI_API_KEY:
     raise RuntimeError("❌ Missing OPENAI_API_KEY in environment")
 if not KLARNA_USERNAME or not KLARNA_PASSWORD:
     raise RuntimeError("❌ Missing KLARNA_USERNAME or KLARNA_PASSWORD in environment")
 if not PUBLIC_URL:
-    raise RuntimeError("❌ Missing PUBLIC_URL in environment (must be your Render URL)")
+    raise RuntimeError("❌ Missing PUBLIC_URL in environment")
 
 # ------------------------------
 # Config
@@ -89,7 +89,7 @@ def create_klarna_order(amount: float, service: str, customer_name: str):
         "order_tax_amount": 0,
         "order_lines": [
             {
-                "type": "service",
+                "type": "physical",  # ✅ must be one of Klarna’s accepted types
                 "reference": order_id,
                 "name": service,
                 "quantity": 1,
