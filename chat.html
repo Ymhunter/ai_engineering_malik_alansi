@@ -24,11 +24,13 @@
       border-radius: 10px;
       max-width: 70%;
       line-height: 1.4em;
+      white-space: pre-line;
     }
     .user {
       background: #0078d7;
       color: white;
       margin-left: auto;
+      text-align: right;
     }
     .bot {
       background: #e0e0e0;
@@ -59,6 +61,13 @@
     button:hover {
       background: #005fa3;
     }
+    .klarna-container {
+      margin-top: 15px;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      background: #fafafa;
+    }
   </style>
 </head>
 <body>
@@ -69,7 +78,7 @@
   </div>
 
   <script>
-    const API_BASE = "https://ai-engineering-malik-alansi-1.onrender.com"; // ✅ correct domain
+    const API_BASE = "https://ai-engineering-malik-alansi-1.onrender.com"; // ✅ your backend
 
     function addMessage(text, sender) {
       const chatbox = document.getElementById("chatbox");
@@ -78,6 +87,37 @@
       msg.textContent = text;
       chatbox.appendChild(msg);
       chatbox.scrollTop = chatbox.scrollHeight;
+    }
+
+    function addKlarnaButton(service, customer_name) {
+      const chatbox = document.getElementById("chatbox");
+      const container = document.createElement("div");
+      container.className = "message bot";
+      container.innerHTML = `
+        💳 Would you like to pay now?<br>
+        <button onclick="payWithKlarna('${service}', '${customer_name}')">Pay with Klarna</button>
+        <div id="klarna-checkout"></div>
+      `;
+      chatbox.appendChild(container);
+      chatbox.scrollTop = chatbox.scrollHeight;
+    }
+
+    async function payWithKlarna(service, customer_name) {
+      try {
+        const response = await fetch(`${API_BASE}/pay/klarna`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ amount: 200, service, customer_name }) // 💰 fixed price example
+        });
+        const data = await response.json();
+        if (data.html_snippet) {
+          document.getElementById("klarna-checkout").innerHTML = data.html_snippet;
+        } else {
+          addMessage("⚠️ Klarna error: " + JSON.stringify(data), "bot");
+        }
+      } catch (err) {
+        addMessage("⚠️ Error: " + err.message, "bot");
+      }
     }
 
     async function sendMessage() {
@@ -101,6 +141,13 @@
 
         if (data.reply) {
           addMessage(data.reply, "bot");
+
+          // If booking reserved, show Klarna button
+          if (data.status === "reserved") {
+            const match = data.reply.match(/for (.+) at/);
+            const name = match ? match[1] : "Customer";
+            addKlarnaButton("Haircut", name);
+          }
         } else {
           addMessage("🤖 " + JSON.stringify(data), "bot");
         }
