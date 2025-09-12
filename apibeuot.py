@@ -9,6 +9,7 @@ import os
 import json
 import re
 from dotenv import load_dotenv
+from fastapi.middleware.cors import CORSMiddleware
 
 # ------------------------------
 # Load environment variables
@@ -37,6 +38,15 @@ KLARNA_API_URL = "https://api.playground.klarna.com"
 # FastAPI app
 # ------------------------------
 app = FastAPI(title="Barbershop Booking AI Agent with Klarna")
+
+# Enable CORS so frontend fetch() works
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production restrict to your domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ------------------------------
 # Pydantic models
@@ -140,9 +150,9 @@ def extract_booking_from_message(message: str) -> BookingRequest:
 
         return BookingRequest(
             service="Haircut",
-            date=date_match.group(0) if date_match else "2025-09-13",
-            time=time_match.group(0) if time_match else "10:00",
-            customer_name=name_match.group(1) if name_match else "Unknown"
+            date=date_match.group(0) if date_match else "",
+            time=time_match.group(0) if time_match else "",
+            customer_name=name_match.group(1) if name_match else ""
         )
 
 # ------------------------------
@@ -158,16 +168,55 @@ async def health():
 
 @app.post("/chat")
 async def chat_with_agent(user_input: ChatMessage):
+    text = user_input.message.strip().lower()
+
+    # Friendly greeting for smalltalk
+    if text in ["hi", "hello", "hey"]:
+        return {
+            "status": "greeting",
+            "reply": "👋 Hello! I can help you book a haircut. Please tell me your name, the date (YYYY-MM-DD), and the time (HH:MM)."
+        }
+
     booking = extract_booking_from_message(user_input.message)
 
-    if not check_availability(booking.date, booking.time):
-        return {"status": "unavailable", "booking": booking.dict()}
+    # Check what info is missing
+    missing = []
+    if not booking.customer_name:
+        missing.append("your name")
+    if not booking.date:
+        missing.append("the date (YYYY-MM-DD)")
+    if not booking.time:
+        missing.append("the time (HH:MM)")
 
+    if missing:
+        return {
+            "status": "incomplete",
+            "reply": f"Could you please provide {' and '.join(missing)} for your booking?"
+        }
+
+    # If slot is unavailable, suggest alternatives
+    if not check_availability(booking.date, booking.time):
+        alternatives = available_slots.get(booking.date, [])
+        if alternatives:
+            return {
+                "status": "unavailable",
+                "reply": f"❌ Sorry, {booking.date} at {booking.time} is not available. Available times are: {', '.join(alternatives)}."
+            }
+        else:
+            return {
+                "status": "unavailable",
+                "reply": f"❌ Sorry, no slots available on {booking.date}. Please choose another day."
+            }
+
+    # Reserve booking
     available_slots[booking.date].remove(booking.time)
     booking_id = str(uuid.uuid4())
     bookings[booking_id] = {"booking": booking.dict(), "status": "pending"}
 
-    return {"status": "reserved", "booking_id": booking_id, "booking": booking.dict()}
+    return {
+        "status": "reserved",
+        "reply": f"✅ Reserved! Booking ID: {booking_id} for {booking.customer_name} at {booking.time} on {booking.date}."
+    }
 
 @app.post("/pay/klarna")
 async def pay_with_klarna(payment: KlarnaPaymentRequest):
