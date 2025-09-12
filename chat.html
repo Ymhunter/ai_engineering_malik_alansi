@@ -1,165 +1,279 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Barbershop Booking Chatbot</title>
+
+  <!-- Mobile-friendly viewport & iOS safe areas -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0078d7" />
+
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f5f5f5;
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-      margin: 0;
+    :root{
+      --bg:#f5f7fb;
+      --card:#ffffff;
+      --bot:#eef1f6;
+      --user:#0078d7;
+      --text:#111827;
+      --muted:#6b7280;
+      --radius:16px;
+      --maxw:820px;
     }
-    #chatbox {
-      flex: 1;
-      overflow-y: auto;
-      padding: 20px;
-      background: #fff;
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,Apple Color Emoji,Segoe UI Emoji;
+      color:var(--text);
+      background:var(--bg);
+      display:flex;
+      justify-content:center;
     }
-    .message {
-      margin: 10px 0;
-      padding: 10px 15px;
-      border-radius: 10px;
-      max-width: 70%;
-      line-height: 1.4em;
-      white-space: pre-line;
+    .app{
+      width:100%;
+      max-width:var(--maxw);
+      min-height:100%;
+      display:flex;
+      flex-direction:column;
+      padding-bottom:env(safe-area-inset-bottom);
+      background:var(--bg);
     }
-    .user {
-      background: #0078d7;
-      color: white;
-      margin-left: auto;
-      text-align: right;
+
+    /* Header */
+    .header{
+      position:sticky; top:0; z-index:5;
+      background:linear-gradient(180deg, #ffffff, #ffffffcc 85%, transparent);
+      padding:14px calc(16px + env(safe-area-inset-right)) 10px calc(16px + env(safe-area-inset-left));
+      border-bottom:1px solid #e5e7eb;
+      backdrop-filter:saturate(120%) blur(6px);
     }
-    .bot {
-      background: #e0e0e0;
-      color: black;
-      margin-right: auto;
+    .title{font-weight:700; font-size:18px}
+    .subtitle{color:var(--muted); font-size:13px; margin-top:2px}
+
+    /* Chat area */
+    #chatbox{
+      flex:1;
+      overflow-y:auto;
+      padding:16px;
+      padding-left:calc(16px + env(safe-area-inset-left));
+      padding-right:calc(16px + env(safe-area-inset-right));
+      scroll-behavior:smooth;
     }
-    #inputArea {
-      display: flex;
-      padding: 10px;
-      background: #fafafa;
-      border-top: 1px solid #ddd;
+    .bubble{
+      max-width:85%;
+      width:fit-content;
+      border-radius:var(--radius);
+      padding:12px 14px;
+      margin:8px 0;
+      line-height:1.45;
+      word-wrap:break-word;
+      white-space:pre-wrap;
+      box-shadow:0 1px 1px rgba(0,0,0,0.04);
+      font-size:16px;
     }
-    #userInput {
-      flex: 1;
-      padding: 10px;
-      border: 1px solid #ccc;
-      border-radius: 5px;
+    .bot{
+      background:var(--bot);
+      margin-right:auto;
+      border-top-left-radius:8px;
     }
-    button {
-      margin-left: 10px;
-      padding: 10px 20px;
-      border: none;
-      border-radius: 5px;
-      background: #0078d7;
-      color: white;
-      cursor: pointer;
+    .user{
+      background:var(--user);
+      color:#fff;
+      margin-left:auto;
+      border-top-right-radius:8px;
     }
-    button:hover {
-      background: #005fa3;
+    .meta{ color:var(--muted); font-size:12px; margin-top:2px }
+
+    /* Input bar */
+    .inputWrap{
+      position:sticky; bottom:0; z-index:10;
+      background:linear-gradient(0deg, #ffffff, #ffffffcc 60%, transparent);
+      padding:10px 12px calc(10px + env(safe-area-inset-bottom)) 12px;
+      border-top:1px solid #e5e7eb;
+      backdrop-filter:saturate(120%) blur(6px);
     }
-    .klarna-container {
-      margin-top: 15px;
-      padding: 10px;
-      border: 1px solid #ddd;
-      border-radius: 10px;
-      background: #fafafa;
+    .inputRow{
+      display:flex; gap:10px; align-items:center;
+      background:#fff; border:1px solid #e5e7eb; border-radius:999px; padding:8px 8px 8px 14px;
+      box-shadow:0 1px 2px rgba(0,0,0,0.04);
+    }
+    input[type="text"]{
+      border:none; outline:none; background:transparent; flex:1;
+      font-size:16px; min-height:24px;
+    }
+    button{
+      appearance:none; border:none; border-radius:999px;
+      background:var(--user); color:#fff; font-weight:600;
+      padding:12px 18px; font-size:15px;
+      box-shadow:0 2px 8px rgba(0,120,215,0.25);
+      transition:transform .04s ease, opacity .2s ease;
+    }
+    button:active{ transform:scale(0.98) }
+    button[disabled]{ opacity:.6; pointer-events:none }
+
+    /* Klarna embed container */
+    .klarna-card{
+      background:#fff; border:1px solid #e5e7eb; border-radius:var(--radius);
+      padding:12px; margin-top:8px; width:100%;
+      overflow:hidden;
+    }
+    .botAction{
+      display:flex; gap:10px; flex-wrap:wrap; margin-top:6px;
+    }
+    .secondary{
+      background:#111827; color:#fff;
+      box-shadow:0 2px 8px rgba(17,24,39,0.15);
+    }
+
+    /* Better tap targets on small screens */
+    @media (max-width: 480px){
+      .bubble{ font-size:15.5px; }
+      button{ padding:12px 16px; font-size:15px; }
     }
   </style>
 </head>
 <body>
-  <div id="chatbox"></div>
-  <div id="inputArea">
-    <input type="text" id="userInput" placeholder="Type your message..." onkeypress="if(event.key==='Enter'){sendMessage()}">
-    <button onclick="sendMessage()">Send</button>
+  <div class="app">
+    <div class="header">
+      <div class="title">Barbershop Assistant 💈</div>
+      <div class="subtitle">Book haircuts, ask questions, and pay with Klarna</div>
+    </div>
+
+    <div id="chatbox" aria-live="polite"></div>
+
+    <div class="inputWrap">
+      <form class="inputRow" onsubmit="event.preventDefault(); sendMessage();">
+        <input
+          id="userInput"
+          type="text"
+          inputmode="text"
+          autocomplete="off"
+          enterkeyhint="send"
+          placeholder="Type your message…"
+          aria-label="Your message"
+        />
+        <button id="sendBtn" type="submit">Send</button>
+      </form>
+    </div>
   </div>
 
   <script>
-    const API_BASE = "https://ai-engineering-malik-alansi-1.onrender.com"; // ✅ your backend
+    const API_BASE = "https://ai-engineering-malik-alansi-1.onrender.com";
 
-    function addMessage(text, sender) {
-      const chatbox = document.getElementById("chatbox");
-      const msg = document.createElement("div");
-      msg.className = "message " + sender;
-      msg.textContent = text;
-      chatbox.appendChild(msg);
+    const chatbox = document.getElementById("chatbox");
+    const input   = document.getElementById("userInput");
+    const sendBtn = document.getElementById("sendBtn");
+
+    function addBubble(text, who="bot"){
+      const wrap = document.createElement("div");
+      wrap.className = `bubble ${who}`;
+      wrap.textContent = text;
+      chatbox.appendChild(wrap);
       chatbox.scrollTop = chatbox.scrollHeight;
+      return wrap;
     }
 
-    function addKlarnaButton(service, customer_name) {
-      const chatbox = document.getElementById("chatbox");
-      const container = document.createElement("div");
-      container.className = "message bot";
-      container.innerHTML = `
-        💳 Would you like to pay now?<br>
-        <button onclick="payWithKlarna('${service}', '${customer_name}')">Pay with Klarna</button>
-        <div id="klarna-checkout"></div>
+    function addKlarnaActions(service, customer_name){
+      const wrap = document.createElement("div");
+      wrap.className = "bubble bot";
+      wrap.innerHTML = `
+        <div>💳 Would you like to pay now?</div>
+        <div class="botAction">
+          <button class="secondary" type="button" id="payBtn">Pay with Klarna</button>
+        </div>
+        <div class="klarna-card"><div id="klarna-checkout"></div></div>
       `;
-      chatbox.appendChild(container);
+      chatbox.appendChild(wrap);
       chatbox.scrollTop = chatbox.scrollHeight;
+
+      document.getElementById("payBtn").addEventListener("click", () => {
+        payWithKlarna(service, customer_name);
+      });
     }
 
-    async function payWithKlarna(service, customer_name) {
-      try {
-        const response = await fetch(`${API_BASE}/pay/klarna`, {
+    async function payWithKlarna(service, customer_name){
+      const loading = addBubble("⏳ Creating Klarna checkout…", "bot");
+      try{
+        const res = await fetch(`${API_BASE}/pay/klarna`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ amount: 200, service, customer_name }) // 💰 fixed price example
+          body: JSON.stringify({ amount: 200, service, customer_name })
         });
-        const data = await response.json();
-        if (data.html_snippet) {
-          document.getElementById("klarna-checkout").innerHTML = data.html_snippet;
-        } else {
-          addMessage("⚠️ Klarna error: " + JSON.stringify(data), "bot");
-        }
-      } catch (err) {
-        addMessage("⚠️ Error: " + err.message, "bot");
-      }
-    }
+        const data = await res.json();
+        loading.remove();
 
-    async function sendMessage() {
-      const input = document.getElementById("userInput");
-      const message = input.value.trim();
-      if (!message) return;
-
-      // Show user message
-      addMessage(message, "user");
-      input.value = "";
-
-      try {
-        const response = await fetch(`${API_BASE}/chat`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message })
-        });
-
-        const data = await response.json();
-        console.log("Server response:", data);
-
-        if (data.reply) {
-          addMessage(data.reply, "bot");
-
-          // If booking reserved, show Klarna button
-          if (data.status === "reserved") {
-            const match = data.reply.match(/for (.+) at/);
-            const name = match ? match[1] : "Customer";
-            addKlarnaButton("Haircut", name);
+        if (data.html_snippet){
+          const container = document.querySelector("#klarna-checkout");
+          if (container){
+            container.innerHTML = data.html_snippet;
+            addBubble("🧾 Checkout loaded. Complete your payment above.", "bot");
+          } else {
+            addBubble("⚠️ Could not find Klarna container.", "bot");
           }
         } else {
-          addMessage("🤖 " + JSON.stringify(data), "bot");
+          addBubble("⚠️ Klarna error: " + JSON.stringify(data), "bot");
         }
-      } catch (err) {
-        addMessage("⚠️ Error: " + err.message, "bot");
+      } catch (e){
+        loading.remove();
+        addBubble("⚠️ Error: " + e.message, "bot");
       }
     }
 
-    // Greet user when page loads
-    window.onload = () => {
-      addMessage("👋 Hi! I’m your Barbershop Assistant. You can book a haircut by telling me your name, date, and time.", "bot");
-    };
+    async function sendMessage(){
+      const text = input.value.trim();
+      if (!text) return;
+
+      // UX: disable while sending
+      sendBtn.disabled = true;
+      addBubble(text, "user");
+      input.value = "";
+      input.blur(); // helps on mobile keyboards
+
+      // small typing indicator
+      const typing = addBubble("…", "bot");
+
+      try{
+        const res = await fetch(`${API_BASE}/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: text })
+        });
+        const data = await res.json();
+        typing.remove();
+
+        if (data.reply){
+          addBubble(data.reply, "bot");
+
+          // If booking reserved, show Klarna button
+          if (data.status === "reserved"){
+            // Try to pull name from reply: “… for Alice at …”
+            const match = data.reply.match(/for (.+?) at/i);
+            const name = match ? match[1] : "Customer";
+            addKlarnaActions("Haircut", name);
+          }
+        } else {
+          addBubble("🤖 " + JSON.stringify(data), "bot");
+        }
+      } catch (e){
+        typing.remove();
+        addBubble("⚠️ Error: " + e.message, "bot");
+      } finally{
+        sendBtn.disabled = false;
+        input.focus();
+      }
+    }
+
+    // Initial greeting
+    window.addEventListener("load", () => {
+      addBubble("👋 Hi! I’m your Barbershop Assistant. Tell me your name, date (YYYY-MM-DD), and time (HH:MM) to book.", "bot");
+      // Improve iOS Safari viewport bounce
+      setTimeout(() => { chatbox.scrollTop = chatbox.scrollHeight; }, 150);
+    });
+
+    // Keep input visible when mobile keyboard opens
+    window.addEventListener("resize", () => {
+      chatbox.scrollTop = chatbox.scrollHeight;
+    });
   </script>
 </body>
 </html>
