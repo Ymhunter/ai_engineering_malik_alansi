@@ -7,9 +7,9 @@ import uuid
 import openai
 import os
 import json
-import re
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
+import re
 
 # ------------------------------
 # Load environment variables
@@ -39,10 +39,10 @@ KLARNA_API_URL = "https://api.playground.klarna.com"
 # ------------------------------
 app = FastAPI(title="Barbershop Booking AI Agent with Klarna")
 
-# Enable CORS so frontend fetch() works
+# Enable CORS for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production restrict to your domain
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -53,12 +53,6 @@ app.add_middleware(
 # ------------------------------
 class ChatMessage(BaseModel):
     message: str
-
-class BookingRequest(BaseModel):
-    service: str
-    date: str
-    time: str
-    customer_name: str
 
 class KlarnaPaymentRequest(BaseModel):
     amount: float
@@ -81,9 +75,7 @@ def check_availability(date: str, time: str):
     return time in available_slots.get(date, [])
 
 def create_klarna_order(amount: float, service: str, customer_name: str):
-    """Create Klarna checkout order"""
     url = f"{KLARNA_API_URL}/checkout/v3/orders"
-
     auth = base64.b64encode(f"{KLARNA_USERNAME}:{KLARNA_PASSWORD}".encode()).decode()
     headers = {
         "Authorization": f"Basic {auth}",
@@ -96,11 +88,11 @@ def create_klarna_order(amount: float, service: str, customer_name: str):
         "purchase_country": "SE",
         "purchase_currency": "SEK",
         "locale": "sv-SE",
-        "order_amount": int(amount * 100),  # in öre
+        "order_amount": int(amount * 100),
         "order_tax_amount": 0,
         "order_lines": [
             {
-                "type": "physical",  # ✅ Klarna requires accepted type
+                "type": "physical",
                 "reference": order_id,
                 "name": service,
                 "quantity": 1,
@@ -125,35 +117,10 @@ def create_klarna_order(amount: float, service: str, customer_name: str):
 
     return response.json()
 
-def extract_booking_from_message(message: str) -> BookingRequest:
-    """Try GPT first, then fallback to regex extraction"""
-    try:
-        completion = openai.ChatCompletion.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are a booking assistant for a barbershop."},
-                {"role": "user", "content": f"Extract service, date (YYYY-MM-DD), time (HH:MM 24h), and customer_name from: {message}. Return JSON only."}
-            ],
-            temperature=0
-        )
-        content = completion.choices[0].message["content"]
-        print("✅ GPT output:", content)
-        parsed = json.loads(content)
-        return BookingRequest(**parsed)
-    except Exception as e:
-        print("❌ GPT failed, using regex fallback:", e)
-
-        # Regex fallback
-        date_match = re.search(r"\d{4}-\d{2}-\d{2}", message)
-        time_match = re.search(r"\d{2}:\d{2}", message)
-        name_match = re.search(r"for\s+(\w+)", message, re.IGNORECASE)
-
-        return BookingRequest(
-            service="Haircut",
-            date=date_match.group(0) if date_match else "",
-            time=time_match.group(0) if time_match else "",
-            customer_name=name_match.group(1) if name_match else ""
-        )
+# ------------------------------
+# Conversation memory (simple, global for demo)
+# ------------------------------
+conversation_history = []
 
 # ------------------------------
 # API Endpoints
@@ -162,61 +129,78 @@ def extract_booking_from_message(message: str) -> BookingRequest:
 async def root():
     return {"status": "ok", "message": "Barbershop Booking AI Agent is running 🚀"}
 
-@app.get("/health")
-async def health():
-    return {"status": "healthy"}
+@app.get("/chatbot")
+async def chatbot_ui():
+    return FileResponse("chat.html")
 
 @app.post("/chat")
 async def chat_with_agent(user_input: ChatMessage):
-    text = user_input.message.strip().lower()
+    global conversation_history
 
-    # Friendly greeting for smalltalk
-    if text in ["hi", "hello", "hey"]:
-        return {
-            "status": "greeting",
-            "reply": "👋 Hello! I can help you book a haircut. Please tell me your name, the date (YYYY-MM-DD), and the time (HH:MM)."
-        }
+    # Save user message to conversation history
+    conversation_history.append({"role": "user", "content": user_input.message})
 
-    booking = extract_booking_from_message(user_input.message)
+    try:
+        # Let GPT handle the conversation
+        completion = openai.ChatCompletion.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": """
+You are a friendly AI assistant for a barbershop. 
+- Greet the customer politely.
+- Answer small talk naturally (e.g. "how are you?").
+- Help them book a haircut by collecting name, date (YYYY-MM-DD), and time (HH:MM).
+- If details are missing, ask for them.
+- When customer provides all details, clearly state the booking request in JSON format: 
+  {"service": "Haircut", "customer_name": "...", "date": "YYYY-MM-DD", "time": "HH:MM"}
+                """}
+            ] + conversation_history,
+            temperature=0.5
+        )
 
-    # Check what info is missing
-    missing = []
-    if not booking.customer_name:
-        missing.append("your name")
-    if not booking.date:
-        missing.append("the date (YYYY-MM-DD)")
-    if not booking.time:
-        missing.append("the time (HH:MM)")
+        reply = completion.choices[0].message["content"]
+        print("🤖 GPT Reply:", reply)
 
-    if missing:
-        return {
-            "status": "incomplete",
-            "reply": f"Could you please provide {' and '.join(missing)} for your booking?"
-        }
+        # Save assistant reply
+        conversation_history.append({"role": "assistant", "content": reply})
 
-    # If slot is unavailable, suggest alternatives
-    if not check_availability(booking.date, booking.time):
-        alternatives = available_slots.get(booking.date, [])
-        if alternatives:
-            return {
-                "status": "unavailable",
-                "reply": f"❌ Sorry, {booking.date} at {booking.time} is not available. Available times are: {', '.join(alternatives)}."
-            }
-        else:
-            return {
-                "status": "unavailable",
-                "reply": f"❌ Sorry, no slots available on {booking.date}. Please choose another day."
-            }
+        # --- Try to detect a JSON booking confirmation in GPT's reply ---
+        match = re.search(r"\{.*\}", reply, re.DOTALL)
+        if match:
+            try:
+                booking = json.loads(match.group(0))
+                date, time, name = booking["date"], booking["time"], booking["customer_name"]
 
-    # Reserve booking
-    available_slots[booking.date].remove(booking.time)
-    booking_id = str(uuid.uuid4())
-    bookings[booking_id] = {"booking": booking.dict(), "status": "pending"}
+                if not check_availability(date, time):
+                    alternatives = available_slots.get(date, [])
+                    if alternatives:
+                        return {
+                            "status": "unavailable",
+                            "reply": f"❌ Sorry, {date} at {time} is not available. Available times: {', '.join(alternatives)}."
+                        }
+                    else:
+                        return {
+                            "status": "unavailable",
+                            "reply": f"❌ Sorry, no slots available on {date}. Please choose another day."
+                        }
 
-    return {
-        "status": "reserved",
-        "reply": f"✅ Reserved! Booking ID: {booking_id} for {booking.customer_name} at {booking.time} on {booking.date}."
-    }
+                # Reserve booking
+                available_slots[date].remove(time)
+                booking_id = str(uuid.uuid4())
+                bookings[booking_id] = {"booking": booking, "status": "pending"}
+
+                return {
+                    "status": "reserved",
+                    "reply": f"✅ Reserved! Booking ID: {booking_id} for {name} at {time} on {date}."
+                }
+            except Exception as e:
+                print("❌ Failed to parse booking JSON:", e)
+
+        return {"status": "chat", "reply": reply}
+
+    except Exception as e:
+        print("❌ GPT error:", e)
+        return {"status": "error", "reply": "⚠️ Sorry, I had trouble responding. Please try again."}
 
 @app.post("/pay/klarna")
 async def pay_with_klarna(payment: KlarnaPaymentRequest):
@@ -233,10 +217,3 @@ async def klarna_push(request: Request):
     body = await request.json()
     print(f"💳 Klarna push received for {klarna_order_id}: {body}")
     return {"status": "received", "order_id": klarna_order_id}
-
-# ------------------------------
-# Serve chatbot frontend
-# ------------------------------
-@app.get("/chatbot")
-async def chatbot_ui():
-    return FileResponse("chat.html")
