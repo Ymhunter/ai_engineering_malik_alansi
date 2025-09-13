@@ -80,60 +80,14 @@
     .pay-btn:hover {
       background: #ffa500;
     }
-    /* Onboarding overlay */
-    #onboarding {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      background: white;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      padding: 20px;
-      z-index: 1000;
-    }
-    #onboarding input, #onboarding select {
-      padding: 12px;
-      margin: 10px 0;
-      width: 90%;
-      max-width: 300px;
-      border-radius: 8px;
-      border: 1px solid #ddd;
-      font-size: 16px;
-    }
-    #onboarding button {
-      padding: 12px 16px;
-      background: #28a745;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 16px;
-    }
-    #onboarding button:hover {
-      background: #218838;
-    }
   </style>
 </head>
 <body>
-  <!-- Onboarding -->
-  <div id="onboarding">
-    <h2>👋 Welcome to Barbershop Assistant</h2>
-    <p>Please enter your details to start chatting</p>
-    <input id="nameInput" placeholder="Your name" />
-    <select id="serviceInput">
-      <option value="">Select service</option>
-      <option value="Haircut">Haircut</option>
-      <option value="Beard Trim">Beard Trim</option>
-      <option value="Shave">Shave</option>
-    </select>
-    <button onclick="startChat()">Start Chat</button>
+  <div id="chat">
+    <div class="msg bot">👋 Hi! I’m your Barbershop Assistant. What’s your name?</div>
   </div>
 
-  <!-- Chat -->
-  <div id="chat"></div>
-  <div id="inputArea" style="display:none;">
+  <div id="inputArea">
     <input id="userInput" placeholder="Type your message..." />
     <button onclick="sendMessage()">Send</button>
   </div>
@@ -143,7 +97,7 @@
     let customerName = "";
     let serviceType = "";
 
-    function appendMessage(text, sender="bot"){
+    function appendMessage(text, sender="bot") {
       const div = document.createElement("div");
       div.className = "msg " + sender;
       div.innerHTML = text;
@@ -151,35 +105,16 @@
       chat.scrollTop = chat.scrollHeight;
     }
 
-    // ✅ Onboarding start
-    function startChat(){
-      const name = document.getElementById("nameInput").value.trim();
-      const service = document.getElementById("serviceInput").value;
-
-      if (!name || !service){
-        alert("Please enter your name and select a service.");
-        return;
-      }
-
-      customerName = name;
-      serviceType = service;
-
-      document.getElementById("onboarding").style.display = "none";
-      document.getElementById("inputArea").style.display = "flex";
-
-      appendMessage(`👋 Hi ${customerName}! You selected <b>${serviceType}</b>. Tell me the date (YYYY-MM-DD) and time (HH:MM) you’d like to book.`, "bot");
-    }
-
-    // ✅ Detect if redirected after payment success
+    // ✅ Detect payment success redirect
     window.onload = () => {
       const params = new URLSearchParams(window.location.search);
       if (params.get("payment") === "success") {
         const orderId = params.get("order_id") || "";
-        appendMessage(`✅ Payment successful! Your Klarna order ID: ${orderId}`, "bot");
+        appendMessage(`✅ Payment successful! Klarna order ID: ${orderId}`, "bot");
       }
     };
 
-    async function sendMessage(){
+    async function sendMessage() {
       const input = document.getElementById("userInput");
       const text = input.value.trim();
       if (!text) return;
@@ -190,20 +125,30 @@
         const res = await fetch("/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
+          body: JSON.stringify({
             message: text,
-            customer_name: customerName,
-            service: serviceType
+            customer_name: customerName || null,
+            service: serviceType || null
           })
         });
         const data = await res.json();
         appendMessage(data.reply, "bot");
 
-        if (data.status === "reserved"){
+        // Save name if looks like one word capitalized (simple heuristic)
+        if (!customerName && text.match(/^[A-Z][a-z]+$/)) {
+          customerName = text;
+        }
+        // Save service if contains haircut/beard/etc.
+        if (!serviceType && (text.toLowerCase().includes("haircut") || text.toLowerCase().includes("beard"))) {
+          serviceType = text;
+        }
+
+        // Show Klarna button when booking reserved
+        if (data.status === "reserved") {
           const payBtn = document.createElement("button");
           payBtn.innerText = "💳 Pay with Klarna";
           payBtn.className = "pay-btn";
-          payBtn.onclick = () => payWithKlarna(serviceType, customerName, 200);
+          payBtn.onclick = () => payWithKlarna(serviceType || "Haircut", customerName || "Customer", 200);
           chat.appendChild(payBtn);
           chat.scrollTop = chat.scrollHeight;
         }
@@ -212,7 +157,7 @@
       }
     }
 
-    async function payWithKlarna(service, customer, amount){
+    async function payWithKlarna(service, customer, amount) {
       try {
         const res = await fetch("/pay/klarna", {
           method: "POST",
@@ -221,8 +166,8 @@
         });
         const data = await res.json();
 
-        if (data.redirect_url){
-          window.location.href = data.redirect_url;
+        if (data.redirect_url) {
+          window.location.href = data.redirect_url; // ✅ redirect to Klarna checkout
         } else {
           appendMessage("⚠️ Klarna error: " + JSON.stringify(data), "bot");
         }

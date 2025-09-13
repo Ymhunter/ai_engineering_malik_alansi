@@ -40,7 +40,7 @@ app = FastAPI(title="Barbershop Booking AI Agent with Klarna")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Restrict in production
+    allow_origins=["*"],  # restrict in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -58,10 +58,6 @@ class KlarnaPaymentRequest(BaseModel):
     amount: float
     service: str
     customer_name: str
-
-class SlotRequest(BaseModel):
-    date: str
-    time: str
 
 # ------------------------------
 # Mock DB
@@ -157,10 +153,6 @@ async def root():
 async def chatbot_ui():
     return FileResponse("chat.html")
 
-@app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard_ui():
-    return FileResponse("dashboard.html")
-
 @app.get("/api/bookings")
 async def get_bookings():
     return bookings
@@ -169,21 +161,12 @@ async def get_bookings():
 async def get_slots():
     return available_slots
 
-@app.post("/api/slots")
-async def add_slot(slot: SlotRequest):
-    if slot.date not in available_slots:
-        available_slots[slot.date] = []
-    if slot.time not in available_slots[slot.date]:
-        available_slots[slot.date].append(slot.time)
-    return {"status": "ok", "slots": available_slots}
-
 @app.post("/chat")
 async def chat_with_agent(user_input: ChatMessage):
     user_message = user_input.message
     customer_name = user_input.customer_name
     service = user_input.service
 
-    # Include onboarding info in context
     context_note = ""
     if customer_name:
         context_note += f"\nCustomer name: {customer_name}"
@@ -205,7 +188,6 @@ async def chat_with_agent(user_input: ChatMessage):
     conversation_history.append({"role": "user", "content": user_message})
     conversation_history.append({"role": "assistant", "content": reply})
 
-    # Check for JSON booking info in reply
     booking_match = re.search(r"\{.*\}", reply)
     if booking_match:
         try:
@@ -233,8 +215,15 @@ async def chat_with_agent(user_input: ChatMessage):
 async def pay_with_klarna(payment: KlarnaPaymentRequest):
     order = create_klarna_order(payment.amount, payment.service, payment.customer_name)
     order_id = order.get("order_id")
-    klarna_orders[order_id] = order.get("html_snippet")
-    checkout_url = f"{PUBLIC_URL}/checkout?klarna_order_id={order_id}"
+    snippet = order.get("html_snippet")
+
+    # ✅ fallback to hosted checkout if snippet fails
+    if snippet and "klarna-unsupported-page" not in snippet:
+        klarna_orders[order_id] = snippet
+        checkout_url = f"{PUBLIC_URL}/checkout?klarna_order_id={order_id}"
+    else:
+        checkout_url = f"https://api.playground.klarna.com/checkout/orders/{order_id}"
+
     return {
         "status": "klarna_order_created",
         "order_id": order_id,
@@ -249,19 +238,13 @@ async def checkout_page(klarna_order_id: str):
 
     return f"""
     <html>
-      <head>
-        <title>Klarna Checkout</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-      </head>
-      <body>
-        {snippet}
-      </body>
+      <head><title>Klarna Checkout</title></head>
+      <body>{snippet}</body>
     </html>
     """
 
 @app.get("/confirmation")
 async def confirmation_page(klarna_order_id: str):
-    # mark booking as paid if found
     for booking_id, info in bookings.items():
         if info["status"] == "pending":
             info["status"] = "paid"
