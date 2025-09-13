@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Barber Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --card: #ffffff;
+      --border: #e5e7eb;
+      --text: #111827;
+      --muted: #6b7280;
+      --radius: 12px;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      background: var(--bg);
+      margin: 0;
+      padding: 16px;
+      color: var(--text);
+    }
+
+    h1, h2 {
+      font-size: 20px;
+      margin: 16px 0 8px;
+      font-weight: 600;
+    }
+
+    section {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      padding: 10px;
+      border-bottom: 1px solid var(--border);
+      font-size: 15px;
+    }
+
+    th {
+      background: #f9fafb;
+      font-weight: 600;
+      text-align: left;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .status {
+      padding: 3px 6px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      display: inline-block;
+    }
+    .pending { background: #fff3cd; color: #856404; }
+    .confirmed { background: #d4edda; color: #155724; }
+
+    .confirm-btn {
+      margin-left: 8px;
+      padding: 4px 8px;
+      font-size: 13px;
+      border: none;
+      border-radius: 6px;
+      background: #4caf50;
+      color: white;
+      cursor: pointer;
+    }
+    .confirm-btn:hover {
+      background: #43a047;
+    }
+
+    .slot-btn {
+      margin: 3px;
+      padding: 6px 10px;
+      border: none;
+      border-radius: 6px;
+      background: #f3f4f6;
+      cursor: pointer;
+    }
+    .slot-btn:hover {
+      background: #e5e7eb;
+    }
+
+    @media (max-width: 600px) {
+      table, thead, tbody, th, td, tr {
+        display: block;
+      }
+      thead {
+        display: none;
+      }
+      tr {
+        margin-bottom: 12px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 10px;
+      }
+      td {
+        border: none;
+        padding: 6px 0;
+      }
+      td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        display: block;
+        color: var(--muted);
+        font-size: 13px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>💈 Barber Dashboard</h1>
+
+  <!-- Bookings -->
+  <section>
+    <h2>📋 Bookings</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Customer</th>
+          <th>Service</th>
+          <th>Date</th>
+          <th>Time</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="bookingsBody">
+        <tr><td colspan="5">Loading…</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Availability -->
+  <section>
+    <h2>📅 Manage Availability</h2>
+    <form id="slotForm">
+      <input type="date" id="slotDate" required />
+      <input type="time" id="slotTime" required />
+      <button type="submit">➕ Add Slot</button>
+    </form>
+    <div id="slotsList">Loading…</div>
+  </section>
+
+  <script>
+    // --- Confirm booking ---
+    async function confirmBooking(id){
+      await fetch(`/api/bookings/${id}/confirm`, { method: "POST" });
+      loadBookings();
+    }
+
+    // --- Load bookings ---
+    async function loadBookings(){
+      const res = await fetch("/api/bookings");
+      const data = await res.json();
+      const body = document.getElementById("bookingsBody");
+      body.innerHTML = "";
+
+      const entries = Object.entries(data);
+      if (entries.length === 0){
+        body.innerHTML = "<tr><td colspan='5'>No bookings yet.</td></tr>";
+        return;
+      }
+
+      for (const [id, info] of entries){
+        const { booking, status } = info;
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td data-label="Customer">${booking.customer_name}</td>
+          <td data-label="Service">${booking.service}</td>
+          <td data-label="Date">${booking.date}</td>
+          <td data-label="Time">${booking.time}</td>
+          <td data-label="Status">
+            <span class="status ${status}">${status}</span>
+            ${status === "pending" ? `<button class="confirm-btn" onclick="confirmBooking('${id}')">✅ Confirm</button>` : ""}
+          </td>
+        `;
+        body.appendChild(tr);
+      }
+    }
+
+    // --- Load slots ---
+    async function loadSlots(){
+      const res = await fetch("/api/slots");
+      const slots = await res.json();
+      const list = document.getElementById("slotsList");
+      list.innerHTML = "";
+
+      const dates = Object.keys(slots).sort();
+      if (dates.length === 0){
+        list.textContent = "No availability yet.";
+        return;
+      }
+
+      dates.forEach(date => {
+        const times = slots[date];
+        const section = document.createElement("div");
+        section.innerHTML = `<h3>${date}</h3>`;
+        times.forEach(t => {
+          const btn = document.createElement("button");
+          btn.textContent = `❌ ${t}`;
+          btn.className = "slot-btn";
+          btn.onclick = async () => {
+            await fetch("/api/slots", {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ date, time: t })
+            });
+            loadSlots();
+          };
+          section.appendChild(btn);
+        });
+        list.appendChild(section);
+      });
+    }
+
+    // --- Add slot form ---
+    document.getElementById("slotForm").addEventListener("submit", async e => {
+      e.preventDefault();
+      const date = document.getElementById("slotDate").value;
+      const time = document.getElementById("slotTime").value;
+      await fetch("/api/slots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, time })
+      });
+      loadSlots();
+      e.target.reset();
+    });
+
+    // Initial load + refresh
+    loadBookings();
+    loadSlots();
+    setInterval(loadBookings, 5000);
+  </script>
+</body>
+</html>
