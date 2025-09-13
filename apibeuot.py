@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 import requests
 import base64
@@ -38,7 +38,6 @@ KLARNA_API_URL = "https://api.playground.klarna.com"
 # ------------------------------
 app = FastAPI(title="Barbershop Booking AI Agent with Klarna")
 
-# Enable CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Restrict in production
@@ -48,7 +47,7 @@ app.add_middleware(
 )
 
 # ------------------------------
-# Pydantic models
+# Models
 # ------------------------------
 class ChatMessage(BaseModel):
     message: str
@@ -59,13 +58,14 @@ class KlarnaPaymentRequest(BaseModel):
     customer_name: str
 
 # ------------------------------
-# Mock "database"
+# Mock DB
 # ------------------------------
 available_slots = {
     "2025-09-13": ["10:00", "11:00", "14:00"],
     "2025-09-14": ["09:00", "12:00", "15:00"]
 }
-bookings = {}
+bookings = {}       # booking_id → booking details
+klarna_orders = {}  # klarna_order_id → html_snippet
 
 # ------------------------------
 # Helpers
@@ -102,9 +102,9 @@ def create_klarna_order(amount: float, service: str, customer_name: str):
         ],
         "merchant_urls": {
             "terms": f"{PUBLIC_URL}/terms",
-            "checkout": f"{PUBLIC_URL}/checkout?klarna_order_id=XYZ",
-            "confirmation": f"{PUBLIC_URL}/confirmation?klarna_order_id=XYZ",
-            "push": f"{PUBLIC_URL}/klarna/push?klarna_order_id=XYZ"
+            "checkout": f"{PUBLIC_URL}/checkout?klarna_order_id={order_id}",
+            "confirmation": f"{PUBLIC_URL}/confirmation?klarna_order_id={order_id}",
+            "push": f"{PUBLIC_URL}/klarna/push?klarna_order_id={order_id}"
         }
     }
 
@@ -124,8 +124,7 @@ You are a friendly booking assistant for a barbershop.
 RULES:
 - Use ONLY these available slots when confirming a booking:
 {slots_text}
-- If the requested slot is not available, suggest available times for that date or other dates.
-- Do NOT invent restrictions like "current week only".
+- If the requested slot is not available, suggest available times.
 - If all details are provided (customer_name, date YYYY-MM-DD, time HH:MM, service),
   output a SINGLE LINE of JSON ONLY:
   {{"service": "Haircut", "customer_name": "...", "date": "YYYY-MM-DD", "time": "HH:MM"}}
@@ -139,13 +138,10 @@ RULES:
         {"role": "user", "content": user_text},
     ]
 
-# ------------------------------
-# Conversation memory
-# ------------------------------
 conversation_history = []
 
 # ------------------------------
-# API Endpoints
+# Endpoints
 # ------------------------------
 @app.get("/")
 async def root():
@@ -163,51 +159,9 @@ async def dashboard_ui():
 async def get_bookings():
     return bookings
 
-@app.post("/api/bookings/{booking_id}/confirm")
-async def confirm_booking(booking_id: str):
-    if booking_id not in bookings:
-        raise HTTPException(status_code=404, detail="Booking not found")
-    bookings[booking_id]["status"] = "confirmed"
-    return {"status": "confirmed", "booking": bookings[booking_id]}
-
-@app.delete("/api/bookings/{booking_id}")
-async def cancel_booking(booking_id: str):
-    if booking_id not in bookings:
-        raise HTTPException(status_code=404, detail="Booking not found")
-    # free the slot again
-    b = bookings[booking_id]["booking"]
-    if b["date"] in available_slots:
-        available_slots[b["date"]].append(b["time"])
-    else:
-        available_slots[b["date"]] = [b["time"]]
-    del bookings[booking_id]
-    return {"status": "cancelled", "id": booking_id}
-
 @app.get("/api/slots")
 async def get_slots():
     return available_slots
-
-@app.post("/api/slots")
-async def add_slot(data: dict):
-    date_str = data.get("date")
-    time = data.get("time")
-    if not date_str or not time:
-        raise HTTPException(status_code=400, detail="date and time required")
-    if date_str not in available_slots:
-        available_slots[date_str] = []
-    if time not in available_slots[date_str]:
-        available_slots[date_str].append(time)
-    return {"status": "added", "slots": available_slots}
-
-@app.delete("/api/slots")
-async def remove_slot(data: dict):
-    date_str = data.get("date")
-    time = data.get("time")
-    if not date_str or not time:
-        raise HTTPException(status_code=400, detail="date and time required")
-    if date_str in available_slots and time in available_slots[date_str]:
-        available_slots[date_str].remove(time)
-    return {"status": "removed", "slots": available_slots}
 
 @app.post("/chat")
 async def chat_with_agent(user_input: ChatMessage):
@@ -243,14 +197,14 @@ async def chat_with_agent(user_input: ChatMessage):
                             "reply": f"❌ Sorry, no slots available on {date_str}. Please choose another day."
                         }
 
-                # Reserve booking
                 available_slots[date_str].remove(time)
                 booking_id = str(uuid.uuid4())
                 bookings[booking_id] = {"booking": booking, "status": "pending"}
 
                 return {
                     "status": "reserved",
-                    "reply": f"✅ Reserved! Booking ID: {booking_id} for {name} at {time} on {date_str}."
+                    "reply": f"✅ Reserved! Booking ID: {booking_id} for {name} at {time} on {date_str}.",
+                    "booking_id": booking_id
                 }
             except Exception as e:
                 print("❌ Failed to parse booking JSON:", e)
@@ -264,15 +218,67 @@ async def chat_with_agent(user_input: ChatMessage):
 @app.post("/pay/klarna")
 async def pay_with_klarna(payment: KlarnaPaymentRequest):
     order = create_klarna_order(payment.amount, payment.service, payment.customer_name)
+    order_id = order.get("order_id")
+
+    # Save Klarna html_snippet in memory
+    klarna_orders[order_id] = order.get("html_snippet")
+
+    checkout_url = f"{PUBLIC_URL}/checkout?klarna_order_id={order_id}"
     return {
         "status": "klarna_order_created",
-        "order_id": order.get("order_id"),
-        "html_snippet": order.get("html_snippet")
+        "order_id": order_id,
+        "redirect_url": checkout_url
     }
+
+@app.get("/checkout", response_class=HTMLResponse)
+async def checkout_page(klarna_order_id: str):
+    snippet = klarna_orders.get(klarna_order_id)
+    if not snippet:
+        return HTMLResponse("<h1>⚠️ Klarna checkout not found for this order</h1>", status_code=404)
+
+    return f"""
+    <html>
+      <head>
+        <title>Klarna Checkout</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <style>
+          body {{
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+            margin: 0;
+            padding: 0;
+          }}
+          #klarna-checkout-container {{
+            max-width: 600px;
+            margin: 40px auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+          }}
+        </style>
+      </head>
+      <body>
+        {snippet}
+      </body>
+    </html>
+    """
 
 @app.post("/klarna/push")
 async def klarna_push(request: Request):
     klarna_order_id = request.query_params.get("klarna_order_id")
     body = await request.json()
     print(f"💳 Klarna push received for {klarna_order_id}: {body}")
+    # TODO: You could update booking status here as well if order_id ↔ booking_id is linked
     return {"status": "received", "order_id": klarna_order_id}
+
+@app.get("/confirmation")
+async def confirmation_page(klarna_order_id: str):
+    # Mark all bookings as paid for simplicity (or map klarna_order_id → booking_id in real system)
+    for booking_id, info in bookings.items():
+        if info["status"] == "pending":
+            bookings[booking_id]["status"] = "paid"
+
+    # Redirect back to chatbot with success flag
+    redirect_url = f"/chatbot?payment=success&order_id={klarna_order_id}"
+    return RedirectResponse(url=redirect_url)
