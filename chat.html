@@ -19,14 +19,15 @@
       overflow-y: auto;
       max-width: 600px;
       margin: 0 auto;
-      padding: 20px;
+      padding: 15px;
       width: 100%;
     }
     .msg {
-      padding: 10px;
-      margin: 5px;
-      border-radius: 8px;
+      padding: 12px;
+      margin: 6px;
+      border-radius: 12px;
       line-height: 1.4em;
+      word-wrap: break-word;
     }
     .user {
       background: #d1e7dd;
@@ -40,36 +41,38 @@
       display: flex;
       max-width: 600px;
       margin: 0 auto;
-      padding: 10px;
+      padding: 8px;
       background: #fff;
       border-top: 1px solid #ddd;
       width: 100%;
     }
     #inputArea input {
       flex: 1;
-      padding: 10px;
+      padding: 12px;
       border: 1px solid #ddd;
-      border-radius: 6px;
-      margin-right: 10px;
+      border-radius: 8px;
+      margin-right: 8px;
+      font-size: 16px;
     }
     #inputArea button {
-      padding: 10px 16px;
+      padding: 12px 18px;
       border: none;
-      border-radius: 6px;
+      border-radius: 8px;
       background: #007bff;
       color: white;
       cursor: pointer;
+      font-size: 16px;
     }
     #inputArea button:hover {
       background: #0056b3;
     }
     .pay-btn {
       display: inline-block;
-      margin-top: 10px;
-      padding: 10px 14px;
+      margin-top: 12px;
+      padding: 12px 16px;
       background: #ffb347;
       border: none;
-      border-radius: 6px;
+      border-radius: 8px;
       cursor: pointer;
       color: #000;
       font-weight: bold;
@@ -77,20 +80,68 @@
     .pay-btn:hover {
       background: #ffa500;
     }
+    /* Onboarding overlay */
+    #onboarding {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: white;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      z-index: 1000;
+    }
+    #onboarding input, #onboarding select {
+      padding: 12px;
+      margin: 10px 0;
+      width: 90%;
+      max-width: 300px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+      font-size: 16px;
+    }
+    #onboarding button {
+      padding: 12px 16px;
+      background: #28a745;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    #onboarding button:hover {
+      background: #218838;
+    }
   </style>
 </head>
 <body>
-  <div id="chat">
-    <div class="msg bot">👋 Hi! I’m your Barbershop Assistant. Tell me your name, date (YYYY-MM-DD), and time (HH:MM) to book.</div>
+  <!-- Onboarding -->
+  <div id="onboarding">
+    <h2>👋 Welcome to Barbershop Assistant</h2>
+    <p>Please enter your details to start chatting</p>
+    <input id="nameInput" placeholder="Your name" />
+    <select id="serviceInput">
+      <option value="">Select service</option>
+      <option value="Haircut">Haircut</option>
+      <option value="Beard Trim">Beard Trim</option>
+      <option value="Shave">Shave</option>
+    </select>
+    <button onclick="startChat()">Start Chat</button>
   </div>
 
-  <div id="inputArea">
+  <!-- Chat -->
+  <div id="chat"></div>
+  <div id="inputArea" style="display:none;">
     <input id="userInput" placeholder="Type your message..." />
     <button onclick="sendMessage()">Send</button>
   </div>
 
   <script>
     const chat = document.getElementById("chat");
+    let customerName = "";
+    let serviceType = "";
 
     function appendMessage(text, sender="bot"){
       const div = document.createElement("div");
@@ -98,6 +149,25 @@
       div.innerHTML = text;
       chat.appendChild(div);
       chat.scrollTop = chat.scrollHeight;
+    }
+
+    // ✅ Onboarding start
+    function startChat(){
+      const name = document.getElementById("nameInput").value.trim();
+      const service = document.getElementById("serviceInput").value;
+
+      if (!name || !service){
+        alert("Please enter your name and select a service.");
+        return;
+      }
+
+      customerName = name;
+      serviceType = service;
+
+      document.getElementById("onboarding").style.display = "none";
+      document.getElementById("inputArea").style.display = "flex";
+
+      appendMessage(`👋 Hi ${customerName}! You selected <b>${serviceType}</b>. Tell me the date (YYYY-MM-DD) and time (HH:MM) you’d like to book.`, "bot");
     }
 
     // ✅ Detect if redirected after payment success
@@ -125,12 +195,11 @@
         const data = await res.json();
         appendMessage(data.reply, "bot");
 
-        // If booking is reserved, show Pay with Klarna button
         if (data.status === "reserved"){
           const payBtn = document.createElement("button");
           payBtn.innerText = "💳 Pay with Klarna";
           payBtn.className = "pay-btn";
-          payBtn.onclick = () => payWithKlarna("Haircut", "Customer", 200);
+          payBtn.onclick = () => payWithKlarna(serviceType, customerName, 200);
           chat.appendChild(payBtn);
           chat.scrollTop = chat.scrollHeight;
         }
@@ -149,7 +218,7 @@
         const data = await res.json();
 
         if (data.redirect_url){
-          window.location.href = data.redirect_url; // ✅ redirect to Klarna checkout
+          window.location.href = data.redirect_url;
         } else {
           appendMessage("⚠️ Klarna error: " + JSON.stringify(data), "bot");
         }
