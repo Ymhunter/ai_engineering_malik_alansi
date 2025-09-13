@@ -2,247 +2,173 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Barber Dashboard</title>
+  <title>Barbershop Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    :root {
-      --bg: #f5f7fb;
-      --card: #ffffff;
-      --border: #e5e7eb;
-      --text: #111827;
-      --muted: #6b7280;
-      --radius: 12px;
-    }
-
     body {
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-      background: var(--bg);
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
       margin: 0;
-      padding: 16px;
-      color: var(--text);
+      padding: 20px;
     }
-
     h1, h2 {
-      font-size: 20px;
-      margin: 16px 0 8px;
-      font-weight: 600;
+      text-align: center;
+      margin-bottom: 15px;
     }
-
-    section {
-      background: var(--card);
-      border-radius: var(--radius);
-      padding: 16px;
-      margin-bottom: 20px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-
     table {
       width: 100%;
+      max-width: 1000px;
+      margin: 20px auto;
       border-collapse: collapse;
+      background: #fff;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
-
     th, td {
-      padding: 10px;
-      border-bottom: 1px solid var(--border);
-      font-size: 15px;
+      padding: 12px 15px;
+      border: 1px solid #ddd;
+      text-align: center;
     }
-
     th {
-      background: #f9fafb;
-      font-weight: 600;
-      text-align: left;
+      background: #007bff;
+      color: white;
     }
-
-    tr:last-child td {
-      border-bottom: none;
+    tr:nth-child(even) {
+      background: #f9f9f9;
     }
-
-    .status {
-      padding: 3px 6px;
+    .status-pending { color: orange; font-weight: bold; }
+    .status-paid { color: green; font-weight: bold; }
+    .status-cancelled { color: red; font-weight: bold; }
+    .refresh {
+      display: block;
+      margin: 10px auto;
+      padding: 10px 16px;
+      background: #007bff;
+      border: none;
+      color: white;
       border-radius: 6px;
-      font-size: 13px;
-      font-weight: 600;
-      display: inline-block;
+      cursor: pointer;
     }
-    .pending { background: #fff3cd; color: #856404; }
-    .confirmed { background: #d4edda; color: #155724; }
-
-    .confirm-btn {
-      margin-left: 8px;
-      padding: 4px 8px;
-      font-size: 13px;
+    .refresh:hover {
+      background: #0056b3;
+    }
+    .slot-editor {
+      max-width: 600px;
+      margin: 30px auto;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    .slot-editor input {
+      padding: 8px;
+      margin: 5px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+    }
+    .slot-editor button {
+      padding: 8px 14px;
+      margin: 5px;
       border: none;
       border-radius: 6px;
-      background: #4caf50;
+      background: #28a745;
       color: white;
       cursor: pointer;
     }
-    .confirm-btn:hover {
-      background: #43a047;
-    }
-
-    .slot-btn {
-      margin: 3px;
-      padding: 6px 10px;
-      border: none;
-      border-radius: 6px;
-      background: #f3f4f6;
-      cursor: pointer;
-    }
-    .slot-btn:hover {
-      background: #e5e7eb;
-    }
-
-    @media (max-width: 600px) {
-      table, thead, tbody, th, td, tr {
-        display: block;
-      }
-      thead {
-        display: none;
-      }
-      tr {
-        margin-bottom: 12px;
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        padding: 10px;
-      }
-      td {
-        border: none;
-        padding: 6px 0;
-      }
-      td::before {
-        content: attr(data-label);
-        font-weight: 600;
-        display: block;
-        color: var(--muted);
-        font-size: 13px;
-      }
+    .slot-editor button:hover {
+      background: #218838;
     }
   </style>
 </head>
 <body>
-  <h1>💈 Barber Dashboard</h1>
+  <h1>💈 Barbershop Dashboard</h1>
 
-  <!-- Bookings -->
-  <section>
-    <h2>📋 Bookings</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Customer</th>
-          <th>Service</th>
-          <th>Date</th>
-          <th>Time</th>
-          <th>Status</th>
-        </tr>
-      </thead>
-      <tbody id="bookingsBody">
-        <tr><td colspan="5">Loading…</td></tr>
-      </tbody>
-    </table>
-  </section>
+  <h2>📅 Current Bookings</h2>
+  <button class="refresh" onclick="loadBookings()">🔄 Refresh Bookings</button>
+  <table id="bookingsTable">
+    <thead>
+      <tr>
+        <th>Booking ID</th>
+        <th>Customer</th>
+        <th>Service</th>
+        <th>Date</th>
+        <th>Time</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
-  <!-- Availability -->
-  <section>
-    <h2>📅 Manage Availability</h2>
-    <form id="slotForm">
-      <input type="date" id="slotDate" required />
-      <input type="time" id="slotTime" required />
-      <button type="submit">➕ Add Slot</button>
-    </form>
-    <div id="slotsList">Loading…</div>
-  </section>
+  <div class="slot-editor">
+    <h2>🕒 Manage Available Slots</h2>
+    <button class="refresh" onclick="loadSlots()">🔄 Refresh Slots</button>
+    <div id="slots"></div>
+    <h3>Add New Slot</h3>
+    <input id="slotDate" type="date" />
+    <input id="slotTime" type="time" />
+    <button onclick="addSlot()">➕ Add Slot</button>
+  </div>
 
   <script>
-    // --- Confirm booking ---
-    async function confirmBooking(id){
-      await fetch(`/api/bookings/${id}/confirm`, { method: "POST" });
-      loadBookings();
-    }
-
-    // --- Load bookings ---
     async function loadBookings(){
       const res = await fetch("/api/bookings");
       const data = await res.json();
-      const body = document.getElementById("bookingsBody");
-      body.innerHTML = "";
 
-      const entries = Object.entries(data);
-      if (entries.length === 0){
-        body.innerHTML = "<tr><td colspan='5'>No bookings yet.</td></tr>";
-        return;
-      }
+      const tbody = document.querySelector("#bookingsTable tbody");
+      tbody.innerHTML = "";
 
-      for (const [id, info] of entries){
-        const { booking, status } = info;
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td data-label="Customer">${booking.customer_name}</td>
-          <td data-label="Service">${booking.service}</td>
-          <td data-label="Date">${booking.date}</td>
-          <td data-label="Time">${booking.time}</td>
-          <td data-label="Status">
-            <span class="status ${status}">${status}</span>
-            ${status === "pending" ? `<button class="confirm-btn" onclick="confirmBooking('${id}')">✅ Confirm</button>` : ""}
-          </td>
+      for (const [id, info] of Object.entries(data)){
+        const row = document.createElement("tr");
+        const booking = info.booking || {};
+        const status = info.status;
+
+        row.innerHTML = `
+          <td>${id}</td>
+          <td>${booking.customer_name || "-"}</td>
+          <td>${booking.service || "-"}</td>
+          <td>${booking.date || "-"}</td>
+          <td>${booking.time || "-"}</td>
+          <td class="status-${status}">${status}</td>
         `;
-        body.appendChild(tr);
+        tbody.appendChild(row);
       }
     }
 
-    // --- Load slots ---
     async function loadSlots(){
       const res = await fetch("/api/slots");
-      const slots = await res.json();
-      const list = document.getElementById("slotsList");
-      list.innerHTML = "";
+      const data = await res.json();
+      const container = document.getElementById("slots");
+      container.innerHTML = "";
 
-      const dates = Object.keys(slots).sort();
-      if (dates.length === 0){
-        list.textContent = "No availability yet.";
+      for (const [date, times] of Object.entries(data)){
+        const div = document.createElement("div");
+        div.innerHTML = `<strong>${date}</strong>: ${times.join(", ") || "No slots"}`;
+        container.appendChild(div);
+      }
+    }
+
+    async function addSlot(){
+      const date = document.getElementById("slotDate").value;
+      const time = document.getElementById("slotTime").value;
+
+      if (!date || !time) {
+        alert("Please provide both date and time");
         return;
       }
 
-      dates.forEach(date => {
-        const times = slots[date];
-        const section = document.createElement("div");
-        section.innerHTML = `<h3>${date}</h3>`;
-        times.forEach(t => {
-          const btn = document.createElement("button");
-          btn.textContent = `❌ ${t}`;
-          btn.className = "slot-btn";
-          btn.onclick = async () => {
-            await fetch("/api/slots", {
-              method: "DELETE",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ date, time: t })
-            });
-            loadSlots();
-          };
-          section.appendChild(btn);
-        });
-        list.appendChild(section);
-      });
-    }
-
-    // --- Add slot form ---
-    document.getElementById("slotForm").addEventListener("submit", async e => {
-      e.preventDefault();
-      const date = document.getElementById("slotDate").value;
-      const time = document.getElementById("slotTime").value;
+      // Just call a POST to /api/slots in backend (to be implemented)
       await fetch("/api/slots", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ date, time })
       });
-      loadSlots();
-      e.target.reset();
-    });
 
-    // Initial load + refresh
-    loadBookings();
-    loadSlots();
-    setInterval(loadBookings, 5000);
+      loadSlots();
+    }
+
+    window.onload = () => {
+      loadBookings();
+      loadSlots();
+    };
   </script>
 </body>
 </html>
