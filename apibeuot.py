@@ -59,6 +59,10 @@ class KlarnaPaymentRequest(BaseModel):
     service: str
     customer_name: str
 
+class SlotRequest(BaseModel):
+    date: str
+    time: str
+
 # ------------------------------
 # Mock DB
 # ------------------------------
@@ -153,6 +157,10 @@ async def root():
 async def chatbot_ui():
     return FileResponse("chat.html")
 
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_ui():
+    return FileResponse("dashboard.html")
+
 @app.get("/api/bookings")
 async def get_bookings():
     return bookings
@@ -160,6 +168,14 @@ async def get_bookings():
 @app.get("/api/slots")
 async def get_slots():
     return available_slots
+
+@app.post("/api/slots")
+async def add_slot(slot: SlotRequest):
+    if slot.date not in available_slots:
+        available_slots[slot.date] = []
+    if slot.time not in available_slots[slot.date]:
+        available_slots[slot.date].append(slot.time)
+    return {"status": "ok", "slots": available_slots}
 
 @app.post("/chat")
 async def chat_with_agent(user_input: ChatMessage):
