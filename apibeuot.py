@@ -392,21 +392,71 @@ async def terms():
 
 
 @app.get("/checkout", response_class=HTMLResponse)
-async def checkout(klarna_order_id: str, request: Request):
+async def checkout(klarna_order_id: str, request: Request, db: Session = Depends(get_db)):
     response = requests.get(
         f"{KLARNA_API_URL}/checkout/v3/orders/{klarna_order_id}",
         auth=(KLARNA_USERNAME, KLARNA_PASSWORD),
         headers={"Content-Type": "application/json"},
         timeout=20
     )
-    if response.status_code != 200:
+    if response.status_code not in (200, 201):
         return HTMLResponse(f"<h1>Klarna error</h1><pre>{response.text}</pre>", status_code=500)
 
     order = response.json()
     snippet = order.get("html_snippet", "")
-    html = f"""<!doctype html><html><head><meta charset="utf-8">
+    lines = order.get("order_lines", []) or []
+    booking_ref = lines[0].get("reference") if lines else ""
+
+    # Only auto-fake-pay in Playground and when explicitly enabled
+    is_playground = "playground" in (KLARNA_API_URL or "").lower()
+    fake_auto_pay = os.getenv("FAKE_KLARNA_AUTO_PAY", "false").lower() == "true"
+    inject_fake = is_playground and fake_auto_pay and booking_ref
+
+    # NOTE: we try to check status via /api/bookings/{id} first (if you added that GET),
+    # else we fall back to posting /paid directly.
+    auto_pay_js = f"""
+    <script>
+      (function() {{
+        const bookingId = "{booking_ref}";
+        if (!bookingId) return;
+
+        setTimeout(async () => {{
+          try {{
+            // Try to read current status (optional endpoint)
+            let status = null;
+            try {{
+              const r = await fetch("/api/bookings/" + bookingId);
+              if (r.ok) {{
+                const b = await r.json();
+                status = b.status;
+              }}
+            }} catch (_ignore) {{}}
+
+            if (status && (status === "paid" || status === "cancelled")) {{
+              console.log("No fake-pay needed. Current status:", status);
+              return;
+            }}
+
+            // Mark as paid (fake) for Playground testing
+            await fetch("/api/bookings/" + bookingId + "/paid", {{ method: "POST" }});
+            console.log("💡 FAKE-PAID after 10s on Klarna checkout (Playground only).");
+          }} catch (e) {{
+            console.error("Fake auto-pay failed:", e);
+          }}
+        }}, 10000);
+      }})();
+    </script>
+    """ if inject_fake else ""
+
+    html = f"""<!doctype html>
+    <html><head><meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
-      <title>Klarna Checkout</title></head><body>{snippet}</body></html>"""
+      <title>Klarna Checkout</title></head>
+    <body>
+      {snippet}
+      {auto_pay_js}
+      {"<p style='font:14px/1.4 sans-serif;color:#666;text-align:center;margin-top:16px'>Playground: will auto-confirm as Paid after 10s if still pending.</p>" if inject_fake else ""}
+    </body></html>"""
     return HTMLResponse(html)
 
 # ------------------------------
