@@ -459,6 +459,16 @@ async def checkout(klarna_order_id: str, request: Request, db: Session = Depends
     </body></html>"""
     return HTMLResponse(html)
 
+
+@app.post("/api/bookings/{booking_id}/paid")
+async def mark_booking_paid(booking_id: str, db: Session = Depends(get_db)):
+    booking = db.query(Booking).filter_by(id=booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    booking.status = "paid"
+    db.commit()
+    return {"status": "paid", "booking_id": booking_id}
+
 # ------------------------------
 # Slots API
 # ------------------------------
