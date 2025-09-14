@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 import requests
 from openai import OpenAI
 
-from database import SessionLocal, Booking, Slot
+from datebase import SessionLocal, Booking, Slot
 
 # ------------------------------
 # Load environment
@@ -221,7 +221,6 @@ async def get_slots(db: Session = Depends(get_db)):
     for s in slots:
         result.setdefault(s.date, []).append(s.time)
     return result
-
 # ------------------------------
 # Bookings API
 # ------------------------------
