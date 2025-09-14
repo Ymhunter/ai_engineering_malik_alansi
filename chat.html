@@ -47,7 +47,7 @@
       border-top: 1px solid #ddd;
       width: 100%;
     }
-    #inputArea input {
+    #userInput {
       flex: 1;
       padding: 12px;
       border: 1px solid #ddd;
@@ -82,6 +82,18 @@
     .pay-btn:hover {
       background: #ffa500;
     }
+    .quick-btn {
+      display: inline-block;
+      margin: 6px 4px;
+      padding: 8px 12px;
+      background: #eee;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .quick-btn:hover {
+      background: #ddd;
+    }
   </style>
 </head>
 <body>
@@ -90,7 +102,7 @@
   </div>
 
   <div id="inputArea">
-    <input id="userInput" placeholder="Type your message..." />
+    <input id="userInput" placeholder="Type your answer..." />
     <button onclick="sendMessage()">Send</button>
   </div>
 
@@ -98,6 +110,7 @@
     const chat = document.getElementById("chat");
     let customerName = "";
     let serviceType = "";
+    let bookingStep = 1; // 1 = ask name, 2 = ask service, 3 = ask date/time, 4 = free chat
 
     function appendMessage(text, sender="bot") {
       const div = document.createElement("div");
@@ -107,7 +120,21 @@
       chat.scrollTop = chat.scrollHeight;
     }
 
-    // ✅ Detect payment success redirect
+    // ✅ Quick reply button generator
+    function addQuickReplies(options) {
+      options.forEach(opt => {
+        const btn = document.createElement("span");
+        btn.className = "quick-btn";
+        btn.innerText = opt;
+        btn.onclick = () => {
+          document.getElementById("userInput").value = opt;
+          sendMessage();
+        };
+        chat.appendChild(btn);
+      });
+      chat.scrollTop = chat.scrollHeight;
+    }
+
     window.onload = () => {
       const params = new URLSearchParams(window.location.search);
       if (params.get("payment") === "success") {
@@ -123,6 +150,26 @@
       appendMessage(text, "user");
       input.value = "";
 
+      // --- Guided onboarding flow ---
+      if (bookingStep === 1) {
+        customerName = text;
+        bookingStep = 2;
+        appendMessage(`Nice to meet you, ${customerName}! Which service would you like?`);
+        addQuickReplies(["💇 Haircut", "✂️ Beard Trim"]);
+        return;
+      }
+      if (bookingStep === 2) {
+        serviceType = text.replace("💇","").replace("✂️","").trim();
+        bookingStep = 3;
+        appendMessage(`Got it! You chose <b>${serviceType}</b>. Which date (YYYY-MM-DD) and time (HH:MM) works for you?`);
+        return;
+      }
+      if (bookingStep === 3) {
+        bookingStep = 4;
+        appendMessage(`Perfect! Let me check availability for ${customerName}, ${serviceType}, on ${text}...`);
+      }
+
+      // --- Send to backend after onboarding ---
       try {
         const res = await fetch("/chat", {
           method: "POST",
@@ -136,16 +183,6 @@
         const data = await res.json();
         appendMessage(data.reply, "bot");
 
-        // Save name if looks like a capitalized single word
-        if (!customerName && text.match(/^[A-Z][a-z]+$/)) {
-          customerName = text;
-        }
-        // Save service if contains haircut/beard/etc.
-        if (!serviceType && (text.toLowerCase().includes("haircut") || text.toLowerCase().includes("beard"))) {
-          serviceType = text;
-        }
-
-        // Show Klarna button when booking reserved
         if (data.status === "reserved") {
           const payBtn = document.createElement("button");
           payBtn.innerText = "💳 Pay with Klarna";
@@ -169,7 +206,7 @@
         const data = await res.json();
 
         if (data.redirect_url) {
-          window.location.href = data.redirect_url; // ✅ redirect to Klarna hosted checkout
+          window.location.href = data.redirect_url;
         } else {
           appendMessage("⚠️ Klarna error: " + JSON.stringify(data), "bot");
         }
