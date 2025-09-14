@@ -34,12 +34,16 @@ header {
 /* Chat area */
 #chat {
   flex: 1;
-  overflow-y: auto;
   padding: 15px;
   display: flex;
   flex-direction: column;
   background: #f0f2f5;
+
+  /* new behaviour */
+  overflow-y: auto;
+  max-height: calc(100vh - 160px); /* adjust based on header + footer height */
 }
+
 
 /* Messages */
 .msg {
