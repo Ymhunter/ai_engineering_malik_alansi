@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from sqlalchemy import create_engine, Column, String, Integer, Boolean
+from sqlalchemy import create_engine, Column, String, Integer, Boolean, inspect, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -44,3 +44,16 @@ class Slot(Base):
 # Create tables (if not exist)
 # ------------------------------
 Base.metadata.create_all(bind=engine)
+
+# ------------------------------
+# Ensure created_at column exists (for old DBs)
+# ------------------------------
+def ensure_created_at_column():
+    inspector = inspect(engine)
+    cols = [c["name"] for c in inspector.get_columns("bookings")]
+    if "created_at" not in cols:
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE bookings ADD COLUMN created_at VARCHAR"))
+            conn.commit()
+
+ensure_created_at_column()
