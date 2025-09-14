@@ -183,6 +183,7 @@ def clean_stale_bookings(db):
 async def pay_with_klarna(payment: KlarnaPaymentRequest):
     reference = payment.booking_id or str(uuid.uuid4())
 
+    order_id = str(uuid.uuid4())
     data = {
         "purchase_country": "SE",
         "purchase_currency": "SEK",
@@ -192,7 +193,7 @@ async def pay_with_klarna(payment: KlarnaPaymentRequest):
         "order_lines": [
             {
                 "type": "physical",
-                "reference": reference,
+                "reference": order_id,
                 "name": payment.service,
                 "quantity": 1,
                 "unit_price": int(payment.amount * 100),
@@ -203,11 +204,12 @@ async def pay_with_klarna(payment: KlarnaPaymentRequest):
         ],
         "merchant_urls": {
             "terms": f"{PUBLIC_URL}/terms",
-            "checkout": f"{PUBLIC_URL}/checkout?klarna_order_id={{checkout.order.id}}",
-            "confirmation": f"{PUBLIC_URL}/confirmation?klarna_order_id={{checkout.order.id}}",
-            "push": f"{PUBLIC_URL}/klarna/push?klarna_order_id={{checkout.order.id}}"
+            "checkout": f"{PUBLIC_URL}/checkout?klarna_order_id={order_id}",
+            "confirmation": f"{PUBLIC_URL}/confirmation?klarna_order_id={order_id}",
+            "push": f"{PUBLIC_URL}/klarna/push?klarna_order_id={order_id}"
         }
     }
+
 
     response = requests.post(
         f"{KLARNA_API_URL}/checkout/v3/orders",
