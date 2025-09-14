@@ -5,14 +5,13 @@ import re
 from datetime import datetime
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
-from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import requests
 from openai import OpenAI
 
-from datebase import SessionLocal, Booking, Slot
+from database import SessionLocal, Booking, Slot
 
 # ------------------------------
 # Load environment
@@ -35,11 +34,8 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 # ------------------------------
 app = FastAPI(title="Barbershop Booking AI Agent")
 
-# Serve static files (chat.html, dashboard.html, CSS, JS)
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
 # ------------------------------
-# Dependency: DB session
+# DB Dependency
 # ------------------------------
 def get_db():
     db = SessionLocal()
@@ -63,30 +59,31 @@ class KlarnaPaymentRequest(BaseModel):
 # Helpers
 # ------------------------------
 def clean_expired_slots(db: Session):
-    """Delete expired slots directly in SQL."""
+    """Delete expired slots (string comparison works for YYYY-MM-DD HH:MM)."""
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-    expired = (
-        db.query(Slot)
-        .filter((Slot.date + " " + Slot.time) <= now_str)  # works since YYYY-MM-DD HH:MM format
-        .all()
-    )
+    expired = db.query(Slot).all()
     for s in expired:
-        db.delete(s)
+        if f"{s.date} {s.time}" <= now_str:
+            db.delete(s)
     db.commit()
 
 # ------------------------------
-# Root & Dashboard
+# HTML Routes
 # ------------------------------
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    return FileResponse("chat.html")
+    return FileResponse("chat.html")   # same folder as main.py
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard():
-    return FileResponse("dashboard.html")
+    return FileResponse("dashboard.html")   # same folder as main.py
+
+@app.get("/chat/test")
+async def chat_test():
+    return {"status": "ok", "message": "Chat endpoint is alive"}
 
 # ------------------------------
-# Chat endpoint with GPT
+# Chat endpoint
 # ------------------------------
 @app.post("/chat")
 async def chat_with_agent(user_input: ChatMessage, db: Session = Depends(get_db)):
@@ -97,13 +94,12 @@ async def chat_with_agent(user_input: ChatMessage, db: Session = Depends(get_db)
         future_slots = [f"{s.date} {s.time}" for s in slots]
         slot_info = ", ".join(future_slots) if future_slots else "No slots available"
 
-        # Ask GPT
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
-                    "content": f"""You are a polite barbershop assistant. 
+                    "content": f"""You are a polite barbershop assistant.
 Available slots: {slot_info}.
 Help the user book a haircut by asking for:
 - Customer name
@@ -119,9 +115,8 @@ Otherwise, guide the user to pick from available slots."""
         )
 
         reply = response.choices[0].message.content
-
-        # Try to extract JSON
         booking_match = re.search(r"\{.*?\}", reply, re.DOTALL)
+
         if booking_match:
             try:
                 booking_data = json.loads(booking_match.group())
@@ -129,9 +124,7 @@ Otherwise, guide the user to pick from available slots."""
                 return {"status": "ok", "reply": reply}
 
             slot_exists = db.query(Slot).filter_by(
-                date=booking_data["date"],
-                time=booking_data["time"],
-                available=True
+                date=booking_data["date"], time=booking_data["time"], available=True
             ).first()
 
             if not slot_exists:
@@ -221,13 +214,34 @@ async def get_slots(db: Session = Depends(get_db)):
     for s in slots:
         result.setdefault(s.date, []).append(s.time)
     return result
+
+@app.post("/api/slots")
+async def add_slot(slot: dict, db: Session = Depends(get_db)):
+    new_slot = Slot(date=slot["date"], time=slot["time"], available=True)
+    db.add(new_slot)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Slot already exists")
+    return {"status": "ok"}
+
+@app.delete("/api/slots")
+async def delete_slot(date: str, time: str, db: Session = Depends(get_db)):
+    slot = db.query(Slot).filter_by(date=date, time=time).first()
+    if not slot:
+        raise HTTPException(status_code=404, detail="Slot not found")
+    db.delete(slot)
+    db.commit()
+    return {"status": "deleted"}
+
 # ------------------------------
 # Bookings API
 # ------------------------------
 @app.get("/api/bookings")
 async def get_bookings(db: Session = Depends(get_db)):
     bookings = db.query(Booking).all()
-    result = [
+    return [
         {
             "id": b.id,
             "customer_name": b.customer_name,
@@ -238,4 +252,3 @@ async def get_bookings(db: Session = Depends(get_db)):
         }
         for b in bookings
     ]
-    return result
