@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <title>Barbershop Chatbot</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -52,35 +52,6 @@
       align-self: flex-end;
     }
 
-    /* Quick questions bar */
-    #quickQuestions {
-      display: flex;
-      gap: 8px;
-      padding: 8px;
-      background: #fff;
-      border-top: 1px solid #ddd;
-      position: fixed;
-      bottom: 60px; /* above input */
-      left: 0;
-      width: 100%;
-      max-width: 600px;
-      justify-content: space-around;
-      z-index: 10;
-    }
-    #quickQuestions button {
-      flex: 1;
-      padding: 10px;
-      border: none;
-      border-radius: 18px;
-      background: #e4e6eb;
-      cursor: pointer;
-      font-size: 14px;
-      white-space: nowrap;
-    }
-    #quickQuestions button:hover {
-      background: #d8dadf;
-    }
-
     #inputArea {
       display: flex;
       padding: 10px;
@@ -122,16 +93,39 @@
       font-weight: bold;
       font-size: 15px;
     }
+
+    .quick-questions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+      padding-bottom: 60px; /* prevent overlap with input */
+    }
+    .quick-questions button {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 18px;
+      background: #e4e6eb;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .quick-questions button:hover {
+      background: #d8dadf;
+    }
   </style>
 </head>
 <body>
-  <div id="chat"></div>
-
-  <!-- Quick questions above keyboard -->
-  <div id="quickQuestions">
-    <button onclick="quickAsk('What services do you offer?')">💈 Services</button>
-    <button onclick="quickAsk('What dates are available?')">📅 Availability</button>
-    <button onclick="quickAsk('I want to book a haircut')">✂️ Book now</button>
+  <div id="chat">
+    <div class="msg bot">
+      👋 Welcome to our Barbershop!  
+      How can I help you today?
+      <div class="quick-questions">
+        <button onclick="quickAsk('What services do you offer?')">💈 Services</button>
+        <button onclick="quickAsk('What dates are available?')">📅 Availability</button>
+        <button onclick="quickAsk('I want to book a haircut')">✂️ Book now</button>
+      </div>
+    </div>
   </div>
 
   <div id="inputArea">
@@ -143,34 +137,39 @@
     const chat = document.getElementById("chat");
     const input = document.getElementById("userInput");
 
+    // store short conversation history so backend can use it
+    const conversation = [];
+
     function appendMessage(text, sender="bot") {
       const div = document.createElement("div");
       div.className = "msg " + sender;
       div.innerHTML = text;
       chat.appendChild(div);
       chat.scrollTop = chat.scrollHeight;
+
+      if (sender === "bot") {
+        conversation.push({ role: "assistant", content: stripHTML(text) });
+      }
+      if (sender === "user") {
+        conversation.push({ role: "user", content: text });
+      }
+
+      // keep conversation short (last 16 messages = 8 turns)
+      while (conversation.length > 16) {
+        conversation.shift();
+      }
+    }
+
+    function stripHTML(html) {
+      const tmp = document.createElement("div");
+      tmp.innerHTML = html;
+      return tmp.textContent || tmp.innerText || "";
     }
 
     function quickAsk(question) {
-      // remove quick questions after first click
-      const quickDiv = document.getElementById("quickQuestions");
-      if (quickDiv) quickDiv.remove();
-
       input.value = question;
       sendMessage();
     }
-
-    input.addEventListener("keypress", (e) => {
-      if (e.key === "Enter") sendMessage();
-    });
-
-    window.onload = () => {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get("payment") === "success") {
-        const orderId = params.get("order_id") || "";
-        appendMessage(`✅ Payment successful! Klarna Order ID: ${orderId}`, "bot");
-      }
-    };
 
     async function sendMessage() {
       const text = input.value.trim();
@@ -183,7 +182,10 @@
         const res = await fetch("/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: text })
+          body: JSON.stringify({
+            message: text,
+            history: conversation
+          })
         });
         const data = await res.json();
         appendMessage(data.reply, "bot");
@@ -219,6 +221,10 @@
         appendMessage("⚠️ Payment error: " + err.message, "bot");
       }
     }
+
+    input.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") sendMessage();
+    });
   </script>
 </body>
 </html>
