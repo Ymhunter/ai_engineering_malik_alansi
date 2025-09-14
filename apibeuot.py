@@ -241,14 +241,15 @@ async def pay_with_klarna(payment: KlarnaPaymentRequest):
         raise HTTPException(status_code=502, detail=f"Klarna request failed: {e}")
 
     # Forward Klarna error details if not 200
-    if resp.status_code != 200:
-        try:
-            detail = resp.json()
-        except Exception:
-            detail = resp.text
-        raise HTTPException(status_code=resp.status_code, detail=detail)
+    if resp.status_code not in (200, 201):
+            try:
+                 detail = resp.json()
+            except Exception:
+                      detail = resp.text
+            raise HTTPException(status_code=resp.status_code, detail=detail)
 
     klarna = resp.json()
+
 
     # Return what the frontend actually needs
     # - klarna['order_id'] is Klarna's own id (used by /checkout to fetch html_snippet)

@@ -220,9 +220,13 @@
 
         if (data.order_id) {
           window.location.href = `/checkout?klarna_order_id=${data.order_id}`;
+        } else if (data.detail?.order_id) {
+          // Klarna order created but wrapped in detail
+          window.location.href = `/checkout?klarna_order_id=${data.detail.order_id}`;
         } else {
           appendMessage("⚠️ Klarna error: " + JSON.stringify(data), "bot");
         }
+
       } catch (err) {
         appendMessage("⚠️ Payment error: " + err.message, "bot");
       }
