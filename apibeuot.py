@@ -2,44 +2,36 @@ import os
 import uuid
 import json
 import re
+from typing import List, Optional, Dict
 from datetime import datetime
+from pathlib import Path
+
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 import requests
 from openai import OpenAI
-from pathlib import Path
 
 from database import SessionLocal, Booking, Slot
 
-# ------------------------------
-# Load environment
-# ------------------------------
+# ---------- Env ----------
 load_dotenv()
-
 KLARNA_USERNAME = os.getenv("KLARNA_USERNAME")
 KLARNA_PASSWORD = os.getenv("KLARNA_PASSWORD")
 PUBLIC_URL = os.getenv("PUBLIC_URL", "http://localhost:8000")
 KLARNA_API_URL = os.getenv("KLARNA_API_URL", "https://api.playground.klarna.com")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
 if not OPENAI_API_KEY:
     raise RuntimeError("❌ Missing OPENAI_API_KEY in environment")
-
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-# ------------------------------
-# FastAPI app
-# ------------------------------
+# ---------- App ----------
 app = FastAPI(title="Barbershop Booking AI Agent")
-
 BASE_DIR = Path(__file__).resolve().parent
 
-# ------------------------------
-# DB Dependency
-# ------------------------------
+# ---------- DB dep ----------
 def get_db():
     db = SessionLocal()
     try:
@@ -47,37 +39,39 @@ def get_db():
     finally:
         db.close()
 
-# ------------------------------
-# Pydantic models
-# ------------------------------
+# ---------- Schemas ----------
+class HistoryMsg(BaseModel):
+    role: str = Field(..., pattern="^(user|assistant)$")
+    content: str
+
 class ChatMessage(BaseModel):
     message: str
+    history: Optional[List[HistoryMsg]] = None  # short recent history from the client
 
 class KlarnaPaymentRequest(BaseModel):
     amount: float
     service: str
     customer_name: str
 
-# ------------------------------
-# Helpers
-# ------------------------------
+# ---------- Helpers ----------
 def clean_expired_slots(db: Session):
-    """Delete expired slots (past datetime)."""
+    """Delete slots that are strictly in the past."""
     now = datetime.now()
-    expired = db.query(Slot).all()
-    for s in expired:
+    for s in db.query(Slot).all():
         try:
             slot_dt = datetime.strptime(f"{s.date} {s.time}", "%Y-%m-%d %H:%M")
             if slot_dt < now:
                 db.delete(s)
         except ValueError:
-            # Skip bad format
             continue
     db.commit()
 
-# ------------------------------
-# HTML Routes
-# ------------------------------
+def format_slots(db: Session) -> str:
+    slots = db.query(Slot).filter_by(available=True).all()
+    future_slots = [f"- {s.date} at {s.time}" for s in slots]
+    return "\n".join(future_slots) if future_slots else "No slots available"
+
+# ---------- Pages ----------
 @app.get("/", response_class=HTMLResponse)
 async def root():
     return FileResponse(BASE_DIR / "chat.html")
@@ -90,61 +84,76 @@ async def dashboard():
 async def chat_test():
     return {"status": "ok", "message": "Chat endpoint is alive"}
 
-# ------------------------------
-# Chat endpoint
-# ------------------------------
+# ---------- Chat ----------
 @app.post("/chat")
-async def chat_with_agent(user_input: ChatMessage, db: Session = Depends(get_db)):
+async def chat_with_agent(payload: ChatMessage, db: Session = Depends(get_db)):
     try:
         clean_expired_slots(db)
+        slot_info = format_slots(db)
 
-        slots = db.query(Slot).filter_by(available=True).all()
-        future_slots = [f"- {s.date} at {s.time}" for s in slots]
-        slot_info = "\n".join(future_slots) if future_slots else "No slots available"
+        # Build the full message list: system + recent history + current user
+        messages: List[Dict[str, str]] = [
+            {
+                "role": "system",
+                "content": f"""You are a polite barbershop assistant.
+Available slots:\n{slot_info}
 
+Your goal is to book a Haircut. Collect these fields and remember what the user already provided across turns:
+- customer_name
+- date (YYYY-MM-DD)
+- time (HH:MM)
+
+Rules:
+- If some fields are missing, ask ONLY for the missing ones.
+- NEVER ask again for info already provided in the conversation history.
+- When ALL fields are present AND the slot is in the available list, reply ONLY with JSON on a single line:
+{{"service":"Haircut","date":"YYYY-MM-DD","time":"HH:MM","customer_name":"NAME"}}
+- Otherwise reply in natural language, offering the available slots (from the list above) as options if needed."""
+            }
+        ]
+
+        # Append recent history from the client (only user/assistant roles)
+        if payload.history:
+            for m in payload.history[-8:]:
+                messages.append({"role": m.role, "content": m.content})
+
+        # Current user message
+        messages.append({"role": "user", "content": payload.message})
+
+        # Call OpenAI
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": f"""You are a polite barbershop assistant. 
-Available slots:
-{slot_info}
-
-Help the user book a haircut by asking for:
-- Customer name
-- Date (YYYY-MM-DD)
-- Time (HH:MM)
-
-If all info is present and matches availability, reply ONLY with JSON:
-{{"service":"Haircut","date":"YYYY-MM-DD","time":"HH:MM","customer_name":"NAME"}}
-Otherwise, guide the user to pick from available slots."""
-                },
-                {"role": "user", "content": user_input.message}
-            ]
+            messages=messages
         )
+        reply = response.choices[0].message.content or ""
 
-        reply = response.choices[0].message.content
+        # Try to extract booking JSON
         booking_match = re.search(r"\{.*?\}", reply, re.DOTALL)
-
         if booking_match:
             try:
                 booking_data = json.loads(booking_match.group())
             except json.JSONDecodeError:
                 return {"status": "ok", "reply": reply}
 
+            # Validate slot availability
             slot_exists = db.query(Slot).filter_by(
-                date=booking_data["date"], time=booking_data["time"], available=True
+                date=booking_data.get("date"),
+                time=booking_data.get("time"),
+                available=True
             ).first()
 
             if not slot_exists:
-                return {"status": "unavailable", "reply": "❌ Sorry, that slot is not available."}
+                return {
+                    "status": "unavailable",
+                    "reply": "❌ Sorry, that slot is not available. Please choose another from the list above."
+                }
 
+            # Create booking & mark slot unavailable
             booking_id = str(uuid.uuid4())
             booking = Booking(
                 id=booking_id,
-                customer_name=booking_data["customer_name"],
-                service=booking_data["service"],
+                customer_name=booking_data.get("customer_name", "Customer"),
+                service=booking_data.get("service", "Haircut"),
                 date=booking_data["date"],
                 time=booking_data["time"],
                 status="pending"
@@ -155,19 +164,19 @@ Otherwise, guide the user to pick from available slots."""
 
             return {
                 "status": "reserved",
-                "reply": f"✅ Reserved! Booking ID: {booking_id} for {booking_data['customer_name']} "
-                         f"at {booking_data['time']} on {booking_data['date']}.<br><br>"
-                         "💳 Would you like to pay now?"
+                "reply": (
+                    f"✅ Reserved! Booking ID: {booking_id} for {booking.customer_name} "
+                    f"at {booking.time} on {booking.date}.<br><br>💳 Would you like to pay now?"
+                )
             }
 
+        # Not complete yet: normal assistant text
         return {"status": "ok", "reply": reply}
 
     except Exception as e:
         return {"status": "error", "reply": f"⚠️ Error: {str(e)}"}
 
-# ------------------------------
-# Klarna Payment
-# ------------------------------
+# ---------- Klarna ----------
 @app.post("/pay/klarna")
 async def pay_with_klarna(payment: KlarnaPaymentRequest):
     order_id = str(uuid.uuid4())
@@ -213,9 +222,7 @@ async def pay_with_klarna(payment: KlarnaPaymentRequest):
 
     return response.json()
 
-# ------------------------------
-# Slots API
-# ------------------------------
+# ---------- Slots ----------
 @app.get("/api/slots")
 async def get_slots(db: Session = Depends(get_db)):
     clean_expired_slots(db)
@@ -245,9 +252,7 @@ async def delete_slot(date: str, time: str, db: Session = Depends(get_db)):
     db.commit()
     return {"status": "deleted"}
 
-# ------------------------------
-# Bookings API
-# ------------------------------
+# ---------- Bookings ----------
 @app.get("/api/bookings")
 async def get_bookings(db: Session = Depends(get_db)):
     bookings = db.query(Booking).all()
