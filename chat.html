@@ -33,16 +33,19 @@ header {
 
 /* Chat area */
 #chat {
-  flex: 1;
   padding: 15px;
   display: flex;
   flex-direction: column;
   background: #f0f2f5;
 
-  /* new behaviour */
+  /* Grow naturally until too tall */
+  max-height: calc(100vh - 160px); /* adjust for header + footer */
   overflow-y: auto;
-  max-height: calc(100vh - 160px); /* adjust based on header + footer height */
+  flex-grow: 0;   /* ❌ don’t stretch when empty */
+  flex-shrink: 0;
+  flex-basis: auto;
 }
+
 
 
 /* Messages */
