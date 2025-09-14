@@ -188,7 +188,7 @@ async def pay_with_klarna(payment: KlarnaPaymentRequest):
         "order_tax_amount": 0,
         "order_lines": [
             {
-                "type": "physical",  # ✅ Klarna accepts this
+                "type": "physical",
                 "reference": order_id,
                 "name": payment.service,
                 "quantity": 1,
@@ -220,7 +220,9 @@ async def pay_with_klarna(payment: KlarnaPaymentRequest):
             error_data = response.text
         raise HTTPException(status_code=response.status_code, detail=error_data)
 
+    # return Klarna's full JSON (includes html_snippet)
     return response.json()
+
 
 # ---------- Slots ----------
 @app.get("/api/slots")
