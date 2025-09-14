@@ -5,112 +5,136 @@
   <title>Barbershop Chatbot</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
+    /* Reset */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      font-family: Arial, sans-serif;
-      background: #f5f5f5;
-      margin: 0;
-      padding: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: #f0f2f5;
       display: flex;
       flex-direction: column;
       height: 100vh;
     }
+
+    /* Chat container */
     #chat {
       flex: 1;
       overflow-y: auto;
-      max-width: 600px;
-      margin: 0 auto;
       padding: 15px;
-      width: 100%;
+      display: flex;
+      flex-direction: column;
     }
+
+    /* Messages */
     .msg {
-      padding: 12px;
-      margin: 6px;
-      border-radius: 12px;
-      line-height: 1.4em;
+      max-width: 80%;
+      padding: 12px 16px;
+      border-radius: 18px;
+      margin: 6px 0;
+      line-height: 1.5;
       word-wrap: break-word;
-      font-size: 16px;
-    }
-    .user {
-      background: #d1e7dd;
-      text-align: right;
     }
     .bot {
-      background: #ffffff;
+      background: #fff;
+      align-self: flex-start;
       border: 1px solid #ddd;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
     }
+    .user {
+      background: #007bff;
+      color: white;
+      align-self: flex-end;
+    }
+
+    /* Input area */
     #inputArea {
       display: flex;
-      max-width: 600px;
-      margin: 0 auto;
-      padding: 8px;
+      padding: 10px;
       background: #fff;
       border-top: 1px solid #ddd;
-      width: 100%;
+      position: sticky;
+      bottom: 0;
     }
-    #userInput {
+    #inputArea input {
       flex: 1;
       padding: 12px;
       border: 1px solid #ddd;
-      border-radius: 8px;
-      margin-right: 8px;
+      border-radius: 20px;
+      margin-right: 10px;
       font-size: 16px;
     }
     #inputArea button {
       padding: 12px 18px;
       border: none;
-      border-radius: 8px;
+      border-radius: 20px;
       background: #007bff;
-      color: white;
-      cursor: pointer;
+      color: #fff;
       font-size: 16px;
+      cursor: pointer;
     }
     #inputArea button:hover {
       background: #0056b3;
     }
+
+    /* Pay button */
     .pay-btn {
       display: inline-block;
-      margin-top: 12px;
+      margin-top: 10px;
       padding: 12px 16px;
       background: #ffb347;
       border: none;
-      border-radius: 8px;
+      border-radius: 20px;
       cursor: pointer;
       color: #000;
       font-weight: bold;
-      font-size: 16px;
+      font-size: 15px;
     }
     .pay-btn:hover {
       background: #ffa500;
     }
-    .quick-btn {
-      display: inline-block;
-      margin: 6px 4px;
-      padding: 8px 12px;
-      background: #eee;
-      border-radius: 6px;
+
+    /* Quick start buttons */
+    .quick-questions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .quick-questions button {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 18px;
+      background: #e4e6eb;
       cursor: pointer;
       font-size: 14px;
     }
-    .quick-btn:hover {
-      background: #ddd;
+    .quick-questions button:hover {
+      background: #d8dadf;
     }
   </style>
 </head>
 <body>
   <div id="chat">
-    <div class="msg bot">👋 Hi! I’m your Barbershop Assistant. What’s your name?</div>
+    <div class="msg bot">
+      👋 Welcome to our Barbershop!  
+      I can help you book an appointment.  
+      Please start by choosing one of the options below:
+      <div class="quick-questions">
+        <button onclick="quickAsk('What services do you offer?')">💈 Services</button>
+        <button onclick="quickAsk('What dates are available?')">📅 Availability</button>
+        <button onclick="quickAsk('I want to book a haircut')">✂️ Book now</button>
+      </div>
+    </div>
   </div>
 
   <div id="inputArea">
-    <input id="userInput" placeholder="Type your answer..." />
+    <input id="userInput" placeholder="Type your message..." />
     <button onclick="sendMessage()">Send</button>
   </div>
 
   <script>
     const chat = document.getElementById("chat");
-    let customerName = "";
-    let serviceType = "";
-    let bookingStep = 1; // 1 = ask name, 2 = ask service, 3 = ask date/time, 4 = free chat
 
     function appendMessage(text, sender="bot") {
       const div = document.createElement("div");
@@ -120,26 +144,18 @@
       chat.scrollTop = chat.scrollHeight;
     }
 
-    // ✅ Quick reply button generator
-    function addQuickReplies(options) {
-      options.forEach(opt => {
-        const btn = document.createElement("span");
-        btn.className = "quick-btn";
-        btn.innerText = opt;
-        btn.onclick = () => {
-          document.getElementById("userInput").value = opt;
-          sendMessage();
-        };
-        chat.appendChild(btn);
-      });
-      chat.scrollTop = chat.scrollHeight;
+    // Handle quick start
+    function quickAsk(question) {
+      document.getElementById("userInput").value = question;
+      sendMessage();
     }
 
+    // Detect Klarna redirect success
     window.onload = () => {
       const params = new URLSearchParams(window.location.search);
       if (params.get("payment") === "success") {
         const orderId = params.get("order_id") || "";
-        appendMessage(`✅ Payment successful! Klarna order ID: ${orderId}`, "bot");
+        appendMessage(`✅ Payment successful! Klarna Order ID: ${orderId}`, "bot");
       }
     };
 
@@ -147,38 +163,15 @@
       const input = document.getElementById("userInput");
       const text = input.value.trim();
       if (!text) return;
+
       appendMessage(text, "user");
       input.value = "";
 
-      // --- Guided onboarding flow ---
-      if (bookingStep === 1) {
-        customerName = text;
-        bookingStep = 2;
-        appendMessage(`Nice to meet you, ${customerName}! Which service would you like?`);
-        addQuickReplies(["💇 Haircut", "✂️ Beard Trim"]);
-        return;
-      }
-      if (bookingStep === 2) {
-        serviceType = text.replace("💇","").replace("✂️","").trim();
-        bookingStep = 3;
-        appendMessage(`Got it! You chose <b>${serviceType}</b>. Which date (YYYY-MM-DD) and time (HH:MM) works for you?`);
-        return;
-      }
-      if (bookingStep === 3) {
-        bookingStep = 4;
-        appendMessage(`Perfect! Let me check availability for ${customerName}, ${serviceType}, on ${text}...`);
-      }
-
-      // --- Send to backend after onboarding ---
       try {
         const res = await fetch("/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message: text,
-            customer_name: customerName || null,
-            service: serviceType || null
-          })
+          body: JSON.stringify({ message: text })
         });
         const data = await res.json();
         appendMessage(data.reply, "bot");
@@ -187,7 +180,7 @@
           const payBtn = document.createElement("button");
           payBtn.innerText = "💳 Pay with Klarna";
           payBtn.className = "pay-btn";
-          payBtn.onclick = () => payWithKlarna(serviceType || "Haircut", customerName || "Customer", 200);
+          payBtn.onclick = () => payWithKlarna("Haircut", "Customer", 200);
           chat.appendChild(payBtn);
           chat.scrollTop = chat.scrollHeight;
         }
