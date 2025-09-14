@@ -90,7 +90,9 @@ async def chat_with_agent(user_input: ChatMessage):
 
         # Call GPT to handle the conversation
         messages = [
-            {"content": f"""You are a polite barbershop assistant. 
+    {
+        "role": "system",
+        "content": f"""You are a polite barbershop assistant. 
 Available slots are: {slot_info}.
 Help the user book a haircut by asking for:
 - Customer name
@@ -103,9 +105,9 @@ Help the user book a haircut by asking for:
 Do NOT keep asking again if you already have the information. 
 If any piece of info is missing, only then ask for it.
 """
+    }
+]
 
-            }
-        ]
 
         if user_input.history:
             messages.extend(user_input.history)
