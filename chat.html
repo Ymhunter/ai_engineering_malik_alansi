@@ -210,27 +210,27 @@
     }
 
     async function payWithKlarna(service, customer, amount, bookingId) {
-      try {
-        const res = await fetch("/pay/klarna", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ service, customer_name: customer, amount, booking_id: bookingId })
-        });
-        const data = await res.json();
+  try {
+    const res = await fetch("/pay/klarna", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ service, customer_name: customer, amount, booking_id: bookingId })
+    });
+    const data = await res.json();
 
-        if (data.order_id) {
-          window.location.href = `/checkout?klarna_order_id=${data.order_id}`;
-        } else if (data.detail?.order_id) {
-          // Klarna order created but wrapped in detail
-          window.location.href = `/checkout?klarna_order_id=${data.detail.order_id}`;
-        } else {
-          appendMessage("⚠️ Klarna error: " + JSON.stringify(data), "bot");
-        }
-
-      } catch (err) {
-        appendMessage("⚠️ Payment error: " + err.message, "bot");
-      }
+    if (data.order_id) {
+      // ✅ redirect straight to confirmation page
+      window.location.href = `/confirmation?klarna_order_id=${data.order_id}`;
+    } else if (data.detail?.order_id) {
+      // fallback if backend wrapped Klarna response
+      window.location.href = `/confirmation?klarna_order_id=${data.detail.order_id}`;
+    } else {
+      appendMessage("⚠️ Klarna error: " + JSON.stringify(data), "bot");
     }
+  } catch (err) {
+    appendMessage("⚠️ Payment error: " + err.message, "bot");
+  }
+}
 
     input.addEventListener("keypress", (e) => {
       if (e.key === "Enter") sendMessage();

@@ -70,25 +70,18 @@
     button:hover {
       background: #0056b3;
     }
-    .status-pending {
-      color: #ff9800;
-      font-weight: bold;
-    }
-    .status-paid {
-      color: #4caf50;
-      font-weight: bold;
-    }
-    .status-cancelled {
-      color: #f44336;
-      font-weight: bold;
+    .status-pending { color: #ff9800; font-weight: bold; }
+    .status-paid { color: #4caf50; font-weight: bold; }
+    .status-cancelled { color: #f44336; font-weight: bold; }
+    .status-processing { color: #2196f3; font-weight: bold; }
+    #lastUpdated {
+      text-align: right;
+      font-size: 12px;
+      color: #666;
     }
     @media (max-width: 600px) {
-      table, th, td {
-        font-size: 14px;
-      }
-      form {
-        flex-direction: column;
-      }
+      table, th, td { font-size: 14px; }
+      form { flex-direction: column; }
     }
   </style>
 </head>
@@ -133,47 +126,59 @@
       </thead>
       <tbody></tbody>
     </table>
+    <p id="lastUpdated"></p>
   </section>
 
   <script>
     async function loadSlots() {
-      const res = await fetch("/api/slots");
-      const slots = await res.json();
-      const tbody = document.querySelector("#slotsTable tbody");
-      tbody.innerHTML = "";
-      for (const [date, times] of Object.entries(slots)) {
-        times.forEach(time => {
-          const tr = document.createElement("tr");
-          tr.innerHTML = `
-            <td>${date}</td>
-            <td>${time}</td>
-            <td><button onclick="deleteSlot('${date}','${time}')">❌ Delete</button></td>
-          `;
-          tbody.appendChild(tr);
-        });
+      try {
+        const res = await fetch("/api/slots");
+        if (!res.ok) throw new Error("Failed to load slots");
+        const slots = await res.json();
+        const tbody = document.querySelector("#slotsTable tbody");
+        tbody.innerHTML = "";
+        for (const [date, times] of Object.entries(slots)) {
+          times.forEach(time => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+              <td>${date}</td>
+              <td>${time}</td>
+              <td><button onclick="deleteSlot('${date}','${time}')">❌ Delete</button></td>
+            `;
+            tbody.appendChild(tr);
+          });
+        }
+      } catch (err) {
+        console.error(err);
       }
     }
 
     async function loadBookings() {
-      const res = await fetch("/api/bookings");
-      const bookings = await res.json();
-      const tbody = document.querySelector("#bookingsTable tbody");
-      tbody.innerHTML = "";
-      bookings.forEach(b => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td>${b.customer_name}</td>
-          <td>${b.service}</td>
-          <td>${b.date}</td>
-          <td>${b.time}</td>
-          <td class="status-${b.status}">${b.status}</td>
-          <td>
-            ${b.status !== "cancelled" ? `<button onclick="cancelBooking('${b.id}')">❌ Cancel</button>` : ""}
-            ${b.status === "pending" ? `<button onclick="markPaid('${b.id}')">✅ Mark Paid</button>` : ""}
-          </td>
-        `;
-        tbody.appendChild(tr);
-      });
+      try {
+        const res = await fetch("/api/bookings");
+        if (!res.ok) throw new Error("Failed to load bookings");
+        const bookings = await res.json();
+        const tbody = document.querySelector("#bookingsTable tbody");
+        tbody.innerHTML = "";
+        bookings.forEach(b => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${b.customer_name}</td>
+            <td>${b.service}</td>
+            <td>${b.date}</td>
+            <td>${b.time}</td>
+            <td class="status-${b.status}">${b.status}</td>
+            <td>
+              ${b.status !== "cancelled" ? `<button onclick="cancelBooking('${b.id}')">❌ Cancel</button>` : ""}
+              ${b.status === "pending" ? `<button onclick="markPaid('${b.id}')">✅ Mark Paid</button>` : ""}
+              ${b.status === "pending" ? `<button onclick="syncWithKlarna('${b.id}')">🔄 Sync</button>` : ""}
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (err) {
+        console.error(err);
+      }
     }
 
     document.getElementById("slotForm").addEventListener("submit", async (e) => {
@@ -203,14 +208,32 @@
       loadBookings();
     }
 
+    async function syncWithKlarna(id) {
+      try {
+        const res = await fetch(`/api/bookings/${id}/sync`, { method: "POST" });
+        const data = await res.json();
+        alert(`Booking ${id} status: ${data.status}`);
+        loadBookings();
+      } catch (err) {
+        console.error("Sync failed", err);
+      }
+    }
+
+    function updateTimestamp() {
+      document.getElementById("lastUpdated").innerText =
+        "Last updated: " + new Date().toLocaleTimeString();
+    }
+
     // auto-refresh every 10s
     setInterval(() => {
       loadSlots();
       loadBookings();
+      updateTimestamp();
     }, 10000);
 
     loadSlots();
     loadBookings();
+    updateTimestamp();
   </script>
 </body>
 </html>
