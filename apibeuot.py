@@ -222,7 +222,37 @@ async def pay_with_klarna(payment: KlarnaPaymentRequest):
 
     # return Klarna's full JSON (includes html_snippet)
     return response.json()
+from fastapi import Request
 
+@app.post("/klarna/push")
+async def klarna_push(request: Request, klarna_order_id: str, db: Session = Depends(get_db)):
+    """
+    Klarna will call this when an order status changes.
+    We'll check the status and update the booking if paid.
+    """
+    # Fetch order details from Klarna
+    response = requests.get(
+        f"{KLARNA_API_URL}/checkout/v3/orders/{klarna_order_id}",
+        auth=(KLARNA_USERNAME, KLARNA_PASSWORD),
+        headers={"Content-Type": "application/json"}
+    )
+
+    if response.status_code != 200:
+        raise HTTPException(status_code=500, detail=response.text)
+
+    order = response.json()
+    status = order.get("status")
+
+    if status == "checkout_complete":
+        # Find matching booking by reference (we stored reference = order_id)
+        reference = order["order_lines"][0]["reference"]
+        booking = db.query(Booking).filter_by(id=reference).first()
+        if booking:
+            booking.status = "paid"
+            db.commit()
+            return {"status": "updated", "booking_id": booking.id}
+
+    return {"status": "ignored", "klarna_status": status}
 
 # ---------- Slots ----------
 @app.get("/api/slots")
