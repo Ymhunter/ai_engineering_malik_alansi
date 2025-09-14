@@ -307,13 +307,10 @@ async def klarna_push(
 # ------------------------------
 @app.get("/confirmation", response_class=HTMLResponse)
 async def confirmation(klarna_order_id: str = "", db: Session = Depends(get_db)):
-    """
-    After payment, Klarna will redirect the customer here.
-    Show booking details if payment succeeded.
-    """
     booking_info = None
+    status = "unknown"
+
     if klarna_order_id:
-        # Get Klarna order info
         r = requests.get(
             f"{KLARNA_API_URL}/checkout/v3/orders/{klarna_order_id}",
             auth=(KLARNA_USERNAME, KLARNA_PASSWORD),
@@ -322,29 +319,28 @@ async def confirmation(klarna_order_id: str = "", db: Session = Depends(get_db))
         )
         if r.status_code in (200, 201):
             order = r.json()
+            status = order.get("status")
             lines = order.get("order_lines", [])
             ref = lines[0].get("reference") if lines else None
             if ref:
                 booking_info = db.query(Booking).filter_by(id=ref).first()
 
-    if booking_info and booking_info.status == "paid":
+    if booking_info:
         return HTMLResponse(f"""
-            <h1>✅ Payment Confirmed</h1>
+            <h1>Booking Status: {booking_info.status}</h1>
             <p>Thank you {booking_info.customer_name}!</p>
-            <p>Your booking for <b>{booking_info.service}</b> is confirmed:</p>
+            <p>Your booking for <b>{booking_info.service}</b> is recorded.</p>
             <ul>
                 <li>Date: {booking_info.date}</li>
                 <li>Time: {booking_info.time}</li>
-                <li>Status: Paid</li>
+                <li>Status: {booking_info.status} (Klarna: {status})</li>
                 <li>Booking ID: {booking_info.id}</li>
             </ul>
+            <p>If you just paid, please refresh after a few seconds — Klarna may still be processing.</p>
         """)
     else:
-        return HTMLResponse("""
-            <h1>⚠️ Payment not confirmed yet</h1>
-            <p>If you already completed payment, please wait a moment and refresh this page.</p>
-        """)
-# ------------------------------
+        return HTMLResponse("<h1>⚠️ No booking found for this payment</h1>")
+
 # Klarna required pages
 # ------------------------------
 @app.get("/terms", response_class=HTMLResponse)
@@ -429,12 +425,36 @@ async def cancel_booking(booking_id: str, db: Session = Depends(get_db)):
         slot.available = True
     db.commit()
     return {"status": "cancelled", "booking_id": booking_id}
+@app.get("/api/bookings")
+async def get_bookings(db: Session = Depends(get_db)):
+    clean_stale_bookings(db)
+    bookings = db.query(Booking).all()
+    result = []
 
-@app.post("/api/bookings/{booking_id}/paid")
-async def mark_booking_paid(booking_id: str, db: Session = Depends(get_db)):
-    booking = db.query(Booking).filter_by(id=booking_id).first()
-    if not booking:
-        raise HTTPException(status_code=404, detail="Booking not found")
-    booking.status = "paid"
-    db.commit()
-    return {"status": "paid", "booking_id": booking_id}
+    for b in bookings:
+        klarna_status = None
+        if getattr(b, "klarna_order_id", None):
+            try:
+                r = requests.get(
+                    f"{KLARNA_API_URL}/checkout/v3/orders/{b.klarna_order_id}",
+                    auth=(KLARNA_USERNAME, KLARNA_PASSWORD),
+                    headers={"Content-Type": "application/json"},
+                    timeout=10
+                )
+                if r.status_code in (200, 201):
+                    order = r.json()
+                    klarna_status = order.get("status")
+            except Exception:
+                klarna_status = "unreachable"
+
+        result.append({
+            "id": b.id,
+            "customer_name": b.customer_name,
+            "service": b.service,
+            "date": b.date,
+            "time": b.time,
+            "status": b.status,
+            "klarna_status": klarna_status or "N/A"
+        })
+
+    return result

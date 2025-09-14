@@ -25,7 +25,7 @@
     }
     section {
       width: 95%;
-      max-width: 900px;
+      max-width: 1100px;
       background: #fff;
       margin: 15px;
       padding: 15px;
@@ -80,7 +80,7 @@
       color: #666;
     }
     @media (max-width: 600px) {
-      table, th, td { font-size: 14px; }
+      table, th, td { font-size: 13px; }
       form { flex-direction: column; }
     }
   </style>
@@ -120,7 +120,8 @@
           <th>Service</th>
           <th>Date</th>
           <th>Time</th>
-          <th>Status</th>
+          <th>Status (DB)</th>
+          <th>Status (Klarna)</th>
           <th>Action</th>
         </tr>
       </thead>
@@ -168,10 +169,10 @@
             <td>${b.date}</td>
             <td>${b.time}</td>
             <td class="status-${b.status}">${b.status}</td>
+            <td>${b.klarna_status || "N/A"}</td>
             <td>
               ${b.status !== "cancelled" ? `<button onclick="cancelBooking('${b.id}')">❌ Cancel</button>` : ""}
               ${b.status === "pending" ? `<button onclick="markPaid('${b.id}')">✅ Mark Paid</button>` : ""}
-              ${b.status === "pending" ? `<button onclick="syncWithKlarna('${b.id}')">🔄 Sync</button>` : ""}
             </td>
           `;
           tbody.appendChild(tr);
@@ -206,17 +207,6 @@
     async function markPaid(id) {
       await fetch(`/api/bookings/${id}/paid`, { method: "POST" });
       loadBookings();
-    }
-
-    async function syncWithKlarna(id) {
-      try {
-        const res = await fetch(`/api/bookings/${id}/sync`, { method: "POST" });
-        const data = await res.json();
-        alert(`Booking ${id} status: ${data.status}`);
-        loadBookings();
-      } catch (err) {
-        console.error("Sync failed", err);
-      }
     }
 
     function updateTimestamp() {
