@@ -5,24 +5,22 @@
   <title>Barbershop Chatbot</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
   <style>
-    /* Reset */
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     html, body {
       height: 100%;
       background: #f0f2f5;
-      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-      overflow: hidden; /* prevent layout jump when keyboard opens */
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      overflow: hidden;
     }
 
     body {
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
       align-items: center;
+      justify-content: space-between;
     }
 
-    /* Chat container */
     #chat {
       flex: 1;
       width: 100%;
@@ -34,7 +32,6 @@
       flex-direction: column;
     }
 
-    /* Messages */
     .msg {
       max-width: 80%;
       padding: 12px 16px;
@@ -48,15 +45,13 @@
       background: #fff;
       align-self: flex-start;
       border: 1px solid #ddd;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
     }
     .user {
       background: #007bff;
-      color: white;
+      color: #fff;
       align-self: flex-end;
     }
 
-    /* Input area */
     #inputArea {
       display: flex;
       padding: 10px;
@@ -85,11 +80,7 @@
       font-size: 16px;
       cursor: pointer;
     }
-    #inputArea button:hover {
-      background: #0056b3;
-    }
 
-    /* Pay button */
     .pay-btn {
       display: inline-block;
       margin-top: 10px;
@@ -102,11 +93,7 @@
       font-weight: bold;
       font-size: 15px;
     }
-    .pay-btn:hover {
-      background: #ffa500;
-    }
 
-    /* Quick start buttons */
     .quick-questions {
       display: flex;
       flex-wrap: wrap;
@@ -158,20 +145,17 @@
       chat.scrollTop = chat.scrollHeight;
     }
 
-    // Quick start buttons
     function quickAsk(question) {
-      document.getElementById("userInput").value = question;
+      input.value = question;
       sendMessage();
     }
 
-    // Auto scroll on keyboard open
     input.addEventListener("focus", () => {
       setTimeout(() => {
         chat.scrollTop = chat.scrollHeight;
-      }, 300); // wait for keyboard animation
+      }, 300);
     });
 
-    // Detect Klarna redirect success
     window.onload = () => {
       const params = new URLSearchParams(window.location.search);
       if (params.get("payment") === "success") {
