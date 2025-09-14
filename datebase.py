@@ -1,21 +1,30 @@
 import os
-from sqlalchemy import create_engine, Column, String, Integer, Boolean
+from sqlalchemy import (
+    create_engine,
+    Column,
+    String,
+    Integer,
+    Boolean,
+    UniqueConstraint,
+    Index,
+)
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 # ------------------------------
 # Database URL
 # ------------------------------
-# On Render: you MUST set DATABASE_URL in Environment Variables
-# Use the Internal Database URL from your Render PostgreSQL instance
+# On Render/Heroku: set DATABASE_URL in environment
+# Local fallback: SQLite
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./barbershop.db")
 
 # ------------------------------
 # Engine and Session
 # ------------------------------
-# connect_args needed only for SQLite
 if DATABASE_URL.startswith("sqlite"):
-    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+    engine = create_engine(
+        DATABASE_URL, connect_args={"check_same_thread": False}
+    )
 else:
     engine = create_engine(DATABASE_URL)
 
@@ -32,9 +41,13 @@ class Booking(Base):
     id = Column(String, primary_key=True, index=True)   # UUID
     customer_name = Column(String, index=True)
     service = Column(String)
-    date = Column(String)   # stored as YYYY-MM-DD
-    time = Column(String)   # stored as HH:MM
+    date = Column(String, index=True)   # YYYY-MM-DD
+    time = Column(String, index=True)   # HH:MM
     status = Column(String, default="pending")  # pending / paid / cancelled
+
+    __table_args__ = (
+        Index("ix_booking_date_time", "date", "time"),
+    )
 
 
 class Slot(Base):
@@ -42,8 +55,13 @@ class Slot(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     date = Column(String, index=True)   # YYYY-MM-DD
-    time = Column(String)               # HH:MM
+    time = Column(String, index=True)   # HH:MM
     available = Column(Boolean, default=True)
+
+    __table_args__ = (
+        UniqueConstraint("date", "time", name="uq_slot_datetime"),
+        Index("ix_slot_date_time", "date", "time"),
+    )
 
 # ------------------------------
 # Create tables (if not exist)

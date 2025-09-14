@@ -52,16 +52,15 @@
       align-self: flex-end;
     }
 
-    /* quick questions bar (above keyboard) */
+    /* Quick questions bar */
     #quickQuestions {
       display: flex;
-      flex-wrap: nowrap;
       gap: 8px;
       padding: 8px;
       background: #fff;
       border-top: 1px solid #ddd;
       position: fixed;
-      bottom: 60px; /* sits above input bar */
+      bottom: 60px; /* above input */
       left: 0;
       width: 100%;
       max-width: 600px;
@@ -128,7 +127,7 @@
 <body>
   <div id="chat"></div>
 
-  <!-- Floating quick questions just above keyboard -->
+  <!-- Quick questions above keyboard -->
   <div id="quickQuestions">
     <button onclick="quickAsk('What services do you offer?')">💈 Services</button>
     <button onclick="quickAsk('What dates are available?')">📅 Availability</button>
@@ -161,10 +160,8 @@
       sendMessage();
     }
 
-    input.addEventListener("focus", () => {
-      setTimeout(() => {
-        chat.scrollTop = chat.scrollHeight;
-      }, 300);
+    input.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") sendMessage();
     });
 
     window.onload = () => {

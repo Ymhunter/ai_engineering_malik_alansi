@@ -3,9 +3,10 @@ import uuid
 import json
 import re
 from datetime import datetime
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import requests
@@ -20,8 +21,8 @@ load_dotenv()
 
 KLARNA_USERNAME = os.getenv("KLARNA_USERNAME")
 KLARNA_PASSWORD = os.getenv("KLARNA_PASSWORD")
-PUBLIC_URL = os.getenv("PUBLIC_URL", "https://your-app.onrender.com")
-KLARNA_API_URL = "https://api.playground.klarna.com"
+PUBLIC_URL = os.getenv("PUBLIC_URL", "http://localhost:8000")
+KLARNA_API_URL = os.getenv("KLARNA_API_URL", "https://api.playground.klarna.com")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 if not OPENAI_API_KEY:
@@ -34,8 +35,18 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 # ------------------------------
 app = FastAPI(title="Barbershop Booking AI Agent")
 
-# Serve static folder (chat.html, dashboard.html, CSS, JS)
+# Serve static files (chat.html, dashboard.html, CSS, JS)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# ------------------------------
+# Dependency: DB session
+# ------------------------------
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 # ------------------------------
 # Pydantic models
@@ -51,14 +62,16 @@ class KlarnaPaymentRequest(BaseModel):
 # ------------------------------
 # Helpers
 # ------------------------------
-def clean_expired_slots(db):
-    """Delete expired slots from DB"""
-    now = datetime.now()
-    expired = db.query(Slot).all()
+def clean_expired_slots(db: Session):
+    """Delete expired slots directly in SQL."""
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    expired = (
+        db.query(Slot)
+        .filter((Slot.date + " " + Slot.time) <= now_str)  # works since YYYY-MM-DD HH:MM format
+        .all()
+    )
     for s in expired:
-        slot_dt = datetime.strptime(f"{s.date} {s.time}", "%Y-%m-%d %H:%M")
-        if slot_dt <= now:
-            db.delete(s)
+        db.delete(s)
     db.commit()
 
 # ------------------------------
@@ -73,37 +86,33 @@ async def dashboard():
     return FileResponse("static/dashboard.html")
 
 # ------------------------------
-# Chat endpoint with ChatGPT
+# Chat endpoint with GPT
 # ------------------------------
 @app.post("/chat")
-async def chat_with_agent(user_input: ChatMessage):
+async def chat_with_agent(user_input: ChatMessage, db: Session = Depends(get_db)):
     try:
-        db = SessionLocal()
-        clean_expired_slots(db)  # ✅ remove past slots
+        clean_expired_slots(db)
 
         slots = db.query(Slot).filter_by(available=True).all()
         future_slots = [f"{s.date} {s.time}" for s in slots]
-        db.close()
-
         slot_info = ", ".join(future_slots) if future_slots else "No slots available"
 
-        # Call GPT to handle the conversation
+        # Ask GPT
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
                     "content": f"""You are a polite barbershop assistant. 
-                    Available slots are: {slot_info}.
-                    Help the user book a haircut by asking for:
-                    - Customer name
-                    - Date (YYYY-MM-DD)
-                    - Time (HH:MM)
+Available slots: {slot_info}.
+Help the user book a haircut by asking for:
+- Customer name
+- Date (YYYY-MM-DD)
+- Time (HH:MM)
 
-                    If all info is present and matches availability, reply with JSON:
-                    {{"service":"Haircut","date":"YYYY-MM-DD","time":"HH:MM","customer_name":"NAME"}}
-
-                    Otherwise, guide the user to pick from available slots."""
+If all info is present and matches availability, reply ONLY with JSON:
+{{"service":"Haircut","date":"YYYY-MM-DD","time":"HH:MM","customer_name":"NAME"}}
+Otherwise, guide the user to pick from available slots."""
                 },
                 {"role": "user", "content": user_input.message}
             ]
@@ -111,12 +120,14 @@ async def chat_with_agent(user_input: ChatMessage):
 
         reply = response.choices[0].message.content
 
-        # Look for JSON in GPT reply
-        booking_match = re.search(r"\{.*\}", reply)
+        # Try to extract JSON
+        booking_match = re.search(r"\{.*?\}", reply, re.DOTALL)
         if booking_match:
-            booking_data = json.loads(booking_match.group())
+            try:
+                booking_data = json.loads(booking_match.group())
+            except json.JSONDecodeError:
+                return {"status": "ok", "reply": reply}
 
-            db = SessionLocal()
             slot_exists = db.query(Slot).filter_by(
                 date=booking_data["date"],
                 time=booking_data["time"],
@@ -124,7 +135,6 @@ async def chat_with_agent(user_input: ChatMessage):
             ).first()
 
             if not slot_exists:
-                db.close()
                 return {"status": "unavailable", "reply": "❌ Sorry, that slot is not available."}
 
             booking_id = str(uuid.uuid4())
@@ -137,10 +147,8 @@ async def chat_with_agent(user_input: ChatMessage):
                 status="pending"
             )
             db.add(booking)
-            # Mark slot as unavailable after booking
             slot_exists.available = False
             db.commit()
-            db.close()
 
             return {
                 "status": "reserved",
@@ -168,7 +176,7 @@ async def pay_with_klarna(payment: KlarnaPaymentRequest):
         "order_tax_amount": 0,
         "order_lines": [
             {
-                "type": "physical",
+                "type": "service",
                 "reference": order_id,
                 "name": payment.service,
                 "quantity": 1,
@@ -194,7 +202,11 @@ async def pay_with_klarna(payment: KlarnaPaymentRequest):
     )
 
     if response.status_code != 200:
-        raise HTTPException(status_code=500, detail=response.text)
+        try:
+            error_data = response.json()
+        except Exception:
+            error_data = response.text
+        raise HTTPException(status_code=response.status_code, detail=error_data)
 
     return response.json()
 
@@ -202,24 +214,19 @@ async def pay_with_klarna(payment: KlarnaPaymentRequest):
 # Slots API
 # ------------------------------
 @app.get("/api/slots")
-async def get_slots():
-    db = SessionLocal()
-    clean_expired_slots(db)  # ✅ cleanup old slots
+async def get_slots(db: Session = Depends(get_db)):
+    clean_expired_slots(db)
     slots = db.query(Slot).filter_by(available=True).all()
-
     result = {}
     for s in slots:
         result.setdefault(s.date, []).append(s.time)
-
-    db.close()
     return result
 
 # ------------------------------
 # Bookings API
 # ------------------------------
 @app.get("/api/bookings")
-async def get_bookings():
-    db = SessionLocal()
+async def get_bookings(db: Session = Depends(get_db)):
     bookings = db.query(Booking).all()
     result = [
         {
@@ -232,5 +239,4 @@ async def get_bookings():
         }
         for b in bookings
     ]
-    db.close()
     return result

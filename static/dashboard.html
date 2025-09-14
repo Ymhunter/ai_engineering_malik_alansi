@@ -20,12 +20,12 @@
       width: 100%;
       padding: 15px;
       text-align: center;
-      font-size: 1.2em;
+      font-size: 1.3em;
       font-weight: bold;
     }
     section {
       width: 95%;
-      max-width: 800px;
+      max-width: 900px;
       background: #fff;
       margin: 15px;
       padding: 15px;
@@ -55,22 +55,39 @@
       gap: 10px;
       margin-top: 10px;
     }
-    input, button {
+    form input, form button {
       padding: 8px;
       border: 1px solid #ccc;
       border-radius: 6px;
+    }
+    form input {
       flex: 1;
     }
-    button {
+    form button {
       background: #007bff;
       color: white;
       cursor: pointer;
       flex: 0 0 auto;
     }
-    button:hover {
+    form button:hover {
       background: #0056b3;
     }
-    @media (max-width: 600px) {
+    .delete-btn {
+      background: #dc3545;
+      color: #fff;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .delete-btn:hover {
+      background: #b02a37;
+    }
+    .status-pending { color: orange; font-weight: bold; }
+    .status-paid { color: green; font-weight: bold; }
+    .status-cancelled { color: red; font-weight: bold; }
+
+    @media (max-width: 700px) {
       table, th, td {
         font-size: 14px;
       }
@@ -134,7 +151,7 @@
           tr.innerHTML = `
             <td>${date}</td>
             <td>${time}</td>
-            <td><button onclick="deleteSlot('${date}','${time}')">❌ Delete</button></td>
+            <td><button class="delete-btn" onclick="deleteSlot('${date}','${time}')">❌ Delete</button></td>
           `;
           tbody.appendChild(tr);
         });
@@ -153,7 +170,7 @@
           <td>${b.service}</td>
           <td>${b.date}</td>
           <td>${b.time}</td>
-          <td>${b.status}</td>
+          <td class="status-${b.status}">${b.status}</td>
         `;
         tbody.appendChild(tr);
       });
@@ -176,8 +193,10 @@
       loadSlots();
     }
 
+    // initial load + auto refresh
     loadSlots();
     loadBookings();
+    setInterval(loadBookings, 10000); // refresh bookings every 10s
   </script>
 </body>
 </html>
