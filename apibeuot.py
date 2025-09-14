@@ -264,15 +264,27 @@ async def pay_with_klarna(payment: KlarnaPaymentRequest):
 # ------------------------------
 # Klarna Push: mark booking paid
 # ------------------------------
-@app.post("/klarna/push")
-async def klarna_push(klarna_order_id: str, db: Session = Depends(get_db)):
+# ------------------------------
+# Klarna Push: mark booking paid
+# ------------------------------
+from fastapi import Query
+
+@app.api_route("/klarna/push", methods=["GET", "POST"])
+async def klarna_push(
+    klarna_order_id: str = Query(..., alias="klarna_order_id"),
+    db: Session = Depends(get_db)
+):
+    """
+    Klarna will call this after checkout is completed.
+    It can be GET or POST depending on Klarna setup.
+    """
     r = requests.get(
         f"{KLARNA_API_URL}/checkout/v3/orders/{klarna_order_id}",
         auth=(KLARNA_USERNAME, KLARNA_PASSWORD),
         headers={"Content-Type": "application/json"},
         timeout=20
     )
-    if r.status_code != 200:
+    if r.status_code not in (200, 201):
         raise HTTPException(status_code=500, detail=r.text)
 
     order = r.json()
@@ -280,7 +292,7 @@ async def klarna_push(klarna_order_id: str, db: Session = Depends(get_db)):
     lines = order.get("order_lines", [])
     ref = lines[0].get("reference") if lines else None
 
-    if status == "checkout_complete" and ref:
+    if status in ["checkout_complete", "authorized"] and ref:
         booking = db.query(Booking).filter_by(id=ref).first()
         if booking:
             booking.status = "paid"
@@ -289,6 +301,49 @@ async def klarna_push(klarna_order_id: str, db: Session = Depends(get_db)):
 
     return {"updated": False, "status": status}
 
+
+# ------------------------------
+# Klarna Confirmation Page
+# ------------------------------
+@app.get("/confirmation", response_class=HTMLResponse)
+async def confirmation(klarna_order_id: str = "", db: Session = Depends(get_db)):
+    """
+    After payment, Klarna will redirect the customer here.
+    Show booking details if payment succeeded.
+    """
+    booking_info = None
+    if klarna_order_id:
+        # Get Klarna order info
+        r = requests.get(
+            f"{KLARNA_API_URL}/checkout/v3/orders/{klarna_order_id}",
+            auth=(KLARNA_USERNAME, KLARNA_PASSWORD),
+            headers={"Content-Type": "application/json"},
+            timeout=20
+        )
+        if r.status_code in (200, 201):
+            order = r.json()
+            lines = order.get("order_lines", [])
+            ref = lines[0].get("reference") if lines else None
+            if ref:
+                booking_info = db.query(Booking).filter_by(id=ref).first()
+
+    if booking_info and booking_info.status == "paid":
+        return HTMLResponse(f"""
+            <h1>✅ Payment Confirmed</h1>
+            <p>Thank you {booking_info.customer_name}!</p>
+            <p>Your booking for <b>{booking_info.service}</b> is confirmed:</p>
+            <ul>
+                <li>Date: {booking_info.date}</li>
+                <li>Time: {booking_info.time}</li>
+                <li>Status: Paid</li>
+                <li>Booking ID: {booking_info.id}</li>
+            </ul>
+        """)
+    else:
+        return HTMLResponse("""
+            <h1>⚠️ Payment not confirmed yet</h1>
+            <p>If you already completed payment, please wait a moment and refresh this page.</p>
+        """)
 # ------------------------------
 # Klarna required pages
 # ------------------------------
@@ -296,9 +351,6 @@ async def klarna_push(klarna_order_id: str, db: Session = Depends(get_db)):
 async def terms():
     return HTMLResponse("<h1>Terms & Conditions</h1><p>Sample terms page for Klarna.</p>")
 
-@app.get("/confirmation", response_class=HTMLResponse)
-async def confirmation(klarna_order_id: str = ""):
-    return HTMLResponse(f"<h1>Payment Confirmation</h1><p>Klarna order: {klarna_order_id}</p>")
 
 @app.get("/checkout", response_class=HTMLResponse)
 async def checkout(klarna_order_id: str, request: Request):
