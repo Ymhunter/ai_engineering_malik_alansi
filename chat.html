@@ -3,34 +3,33 @@
 <head>
   <meta charset="UTF-8" />
   <title>Barbershop Chatbot</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
-    html, body {
-      height: 100%;
-      background: #f0f2f5;
-      font-family: "Segoe UI", Tahoma, sans-serif;
-      overflow: hidden;
-    }
-
     body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      justify-content: space-between;
+      height: 100vh;
+      background: #f0f2f5;
+    }
+
+    header {
+      background: #007bff;
+      color: white;
+      padding: 12px;
+      text-align: center;
+      font-size: 18px;
+      font-weight: bold;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
 
     #chat {
       flex: 1;
-      width: 100%;
-      max-width: 600px;
-      padding: 15px;
       overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
+      padding: 15px;
       display: flex;
       flex-direction: column;
-      padding-bottom: 80px; /* prevent input overlap */
     }
 
     .msg {
@@ -39,202 +38,232 @@
       border-radius: 18px;
       margin: 6px 0;
       line-height: 1.5;
-      word-wrap: break-word;
       font-size: 15px;
+      word-wrap: break-word;
+      animation: fadeInUp 0.25s ease;
     }
+
     .bot {
       background: #fff;
       align-self: flex-start;
       border: 1px solid #ddd;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
     .user {
       background: #007bff;
-      color: #fff;
+      color: white;
       align-self: flex-end;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
     }
 
     #inputArea {
       display: flex;
       padding: 10px;
-      background: #fff;
+      background: white;
       border-top: 1px solid #ddd;
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      width: 100%;
-      max-width: 600px;
     }
+
     #inputArea input {
       flex: 1;
       padding: 12px;
       border: 1px solid #ddd;
       border-radius: 20px;
-      margin-right: 10px;
-      font-size: 16px;
+      font-size: 15px;
+      outline: none;
     }
+
     #inputArea button {
-      padding: 12px 18px;
+      margin-left: 10px;
+      padding: 12px 16px;
       border: none;
-      border-radius: 20px;
+      border-radius: 50%;
       background: #007bff;
-      color: #fff;
+      color: white;
       font-size: 16px;
       cursor: pointer;
     }
+.quick-questions {
+  display: flex;
+  flex-wrap: nowrap;      /* ❗ force one row */
+  gap: 8px;
+  padding: 10px;
+  background: #fff;
+  border-top: 1px solid #ddd;
+  position: fixed;
+  bottom: 60px;           /* just above input bar */
+  left: 0;
+  width: 100%;
+  max-width: 600px;
+  overflow-x: auto;       /* horizontal scroll */
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: thin;  /* Firefox: thin scrollbar */
+}
+.quick-questions::-webkit-scrollbar {
+  height: 6px;            /* Chrome/Safari: small scrollbar */
+}
+.quick-questions::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+
+.quick-questions button {
+  flex: 0 0 auto;          /* ❗ do not stretch */
+  padding: 8px 14px;
+  border: none;
+  border-radius: 18px;
+  background: #e4e6eb;
+  cursor: pointer;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.quick-questions button:hover {
+  background: #d8dadf;
+}
+
+
+
+    .loading {
+      font-size: 20px;
+      display: inline-block;
+      margin-left: 5px;
+    }
 
     .pay-btn {
-      display: inline-block;
       margin-top: 10px;
-      padding: 12px 16px;
-      background: #ffb347;
+      padding: 10px 14px;
       border: none;
-      border-radius: 20px;
+      border-radius: 18px;
+      background: #ffb347;
       cursor: pointer;
       color: #000;
       font-weight: bold;
       font-size: 15px;
     }
-
-    .quick-questions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 10px;
-      padding-bottom: 60px; /* prevent overlap with input */
-    }
-    .quick-questions button {
-      flex: 1;
-      padding: 10px;
-      border: none;
-      border-radius: 18px;
-      background: #e4e6eb;
-      cursor: pointer;
-      font-size: 14px;
-    }
-    .quick-questions button:hover {
-      background: #d8dadf;
-    }
   </style>
 </head>
 <body>
+  <header>💈 Barbershop Assistant</header>
   <div id="chat">
     <div class="msg bot">
       👋 Welcome to our Barbershop!  
       How can I help you today?
-      <div class="quick-questions">
-        <button onclick="quickAsk('What services do you offer?')">💈 Services</button>
-        <button onclick="quickAsk('What dates are available?')">📅 Availability</button>
-        <button onclick="quickAsk('I want to book a haircut')">✂️ Book now</button>
-      </div>
     </div>
   </div>
 
+  <!-- Quick Questions Bar -->
+<!-- Quick Questions Bar -->
+<div id="quickQuestions" class="quick-questions">
+  <button onclick="quickAsk('What services do you offer?')">What services do you offer?</button>
+  <button onclick="quickAsk('What dates are available?')">What dates are available?</button>
+  <button onclick="quickAsk('I want to book a haircut today!')">I want to book a haircut today!</button>
+  <!-- you can add more without breaking layout -->
+</div>
+
   <div id="inputArea">
     <input id="userInput" placeholder="Type your message..." />
-    <button onclick="sendMessage()">Send</button>
+    <button onclick="sendMessage()">➤</button>
   </div>
+
 <script>
-    const chat = document.getElementById("chat");
-    const input = document.getElementById("userInput");
-    const conversation = []; // keep rolling history
+  const chat = document.getElementById("chat");
+  const input = document.getElementById("userInput");
+  const conversation = [];
 
-    function scrollToBottom() {
-      requestAnimationFrame(() => {
-        chat.scrollTop = chat.scrollHeight;
-      });
-    }
-
-    function appendMessage(text, sender="bot") {
-      const div = document.createElement("div");
-      div.className = "msg " + sender;
-      div.innerHTML = text;
-      chat.appendChild(div);
-      scrollToBottom();
-
-      if (sender === "bot") {
-        conversation.push({ role: "assistant", content: stripHTML(text) });
-      }
-      if (sender === "user") {
-        conversation.push({ role: "user", content: text });
-      }
-
-      while (conversation.length > 16) {
-        conversation.shift();
-      }
-    }
-
-    function stripHTML(html) {
-      const tmp = document.createElement("div");
-      tmp.innerHTML = html;
-      return tmp.textContent || tmp.innerText || "";
-    }
-
-    function quickAsk(question) {
-      input.value = question;
-      sendMessage();
-    }
-
-    async function sendMessage() {
-      const text = input.value.trim();
-      if (!text) return;
-
-      appendMessage(text, "user");
-      input.value = "";
-
-      try {
-        const res = await fetch("/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message: text,
-            history: conversation
-          })
-        });
-        const data = await res.json();
-        appendMessage(data.reply, "bot");
-
-        if (data.status === "reserved") {
-          const bookingId = data.booking_id;
-          const customerName = stripHTML(data.reply).match(/for (.+?) at/)?.[1] || "Customer";
-
-          const payBtn = document.createElement("button");
-          payBtn.innerText = "💳 Pay with Klarna";
-          payBtn.className = "pay-btn";
-          payBtn.onclick = () => payWithKlarna("Haircut", customerName, 200, bookingId);
-          chat.appendChild(payBtn);
-          scrollToBottom();
-        }
-      } catch (err) {
-        appendMessage("⚠️ Error: " + err.message, "bot");
-      }
-    }
-
-    async function payWithKlarna(service, customer, amount, bookingId) {
-  try {
-    const res = await fetch("/pay/klarna", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ service, customer_name: customer, amount, booking_id: bookingId })
-    });
-    const data = await res.json();
-
-    if (data.order_id) {
-      // ✅ go to Klarna checkout page
-      window.location.href = `/checkout?klarna_order_id=${data.order_id}`;
-    } else if (data.detail?.order_id) {
-      window.location.href = `/checkout?klarna_order_id=${data.detail.order_id}`;
-    } else {
-      appendMessage("⚠️ Klarna error: " + JSON.stringify(data), "bot");
-    }
-  } catch (err) {
-    appendMessage("⚠️ Payment error: " + err.message, "bot");
+  function scrollToBottom() {
+    chat.scrollTop = chat.scrollHeight;
   }
-}
 
+  function appendMessage(text, sender="bot") {
+    const div = document.createElement("div");
+    div.className = "msg " + sender;
+    div.innerHTML = text;
+    chat.appendChild(div);
+    scrollToBottom();
 
-    input.addEventListener("keypress", (e) => {
-      if (e.key === "Enter") sendMessage();
-    });
-  </script>
+    if (sender === "bot") conversation.push({ role: "assistant", content: stripHTML(text) });
+    if (sender === "user") conversation.push({ role: "user", content: text });
+    if (conversation.length > 16) conversation.shift();
+  }
+
+  function stripHTML(html) {
+    const tmp = document.createElement("div");
+    tmp.innerHTML = html;
+    return tmp.textContent || tmp.innerText || "";
+  }
+
+  function quickAsk(question) {
+    input.value = question;
+    sendMessage();
+  }
+
+  async function sendMessage() {
+    const text = input.value.trim();
+    if (!text) return;
+
+    appendMessage(text, "user");
+    input.value = "";
+
+    const loading = document.createElement("span");
+    loading.className = "loading";
+    loading.innerText = "⏳...";
+    chat.appendChild(loading);
+    scrollToBottom();
+
+    try {
+      const res = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text, history: conversation })
+      });
+      const data = await res.json();
+      loading.remove();
+      appendMessage(data.reply, "bot");
+
+      if (data.status === "reserved") {
+        const bookingId = data.booking_id;
+        const customerName = stripHTML(data.reply).match(/for (.+?) at/)?.[1] || "Customer";
+
+        const payBtn = document.createElement("button");
+        payBtn.innerText = "💳 Pay with Klarna";
+        payBtn.className = "pay-btn";
+        payBtn.onclick = () => payWithKlarna("Haircut", customerName, 200, bookingId);
+        chat.appendChild(payBtn);
+        scrollToBottom();
+      }
+    } catch (err) {
+      loading.remove();
+      appendMessage("⚠️ Error: " + err.message, "bot");
+    }
+  }
+
+  async function payWithKlarna(service, customer, amount, bookingId) {
+    try {
+      const res = await fetch("/pay/klarna", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ service, customer_name: customer, amount, booking_id: bookingId })
+      });
+      const data = await res.json();
+
+      if (data.order_id) {
+        window.location.href = `/checkout?klarna_order_id=${data.order_id}`;
+      } else if (data.detail?.order_id) {
+        window.location.href = `/checkout?klarna_order_id=${data.detail.order_id}`;
+      } else {
+        appendMessage("⚠️ Klarna error: " + JSON.stringify(data), "bot");
+      }
+    } catch (err) {
+      appendMessage("⚠️ Payment error: " + err.message, "bot");
+    }
+  }
+
+  input.addEventListener("keypress", e => { if (e.key === "Enter") sendMessage(); });
+</script>
 </body>
 </html>
