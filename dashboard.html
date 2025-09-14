@@ -20,7 +20,7 @@
       width: 100%;
       padding: 15px;
       text-align: center;
-      font-size: 1.3em;
+      font-size: 1.2em;
       font-weight: bold;
     }
     section {
@@ -55,39 +55,34 @@
       gap: 10px;
       margin-top: 10px;
     }
-    form input, form button {
+    input, button, select {
       padding: 8px;
       border: 1px solid #ccc;
       border-radius: 6px;
-    }
-    form input {
       flex: 1;
     }
-    form button {
+    button {
       background: #007bff;
       color: white;
       cursor: pointer;
       flex: 0 0 auto;
     }
-    form button:hover {
+    button:hover {
       background: #0056b3;
     }
-    .delete-btn {
-      background: #dc3545;
-      color: #fff;
-      border: none;
-      padding: 5px 10px;
-      border-radius: 4px;
-      cursor: pointer;
+    .status-pending {
+      color: #ff9800;
+      font-weight: bold;
     }
-    .delete-btn:hover {
-      background: #b02a37;
+    .status-paid {
+      color: #4caf50;
+      font-weight: bold;
     }
-    .status-pending { color: orange; font-weight: bold; }
-    .status-paid { color: green; font-weight: bold; }
-    .status-cancelled { color: red; font-weight: bold; }
-
-    @media (max-width: 700px) {
+    .status-cancelled {
+      color: #f44336;
+      font-weight: bold;
+    }
+    @media (max-width: 600px) {
       table, th, td {
         font-size: 14px;
       }
@@ -133,6 +128,7 @@
           <th>Date</th>
           <th>Time</th>
           <th>Status</th>
+          <th>Action</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -151,7 +147,7 @@
           tr.innerHTML = `
             <td>${date}</td>
             <td>${time}</td>
-            <td><button class="delete-btn" onclick="deleteSlot('${date}','${time}')">❌ Delete</button></td>
+            <td><button onclick="deleteSlot('${date}','${time}')">❌ Delete</button></td>
           `;
           tbody.appendChild(tr);
         });
@@ -171,6 +167,10 @@
           <td>${b.date}</td>
           <td>${b.time}</td>
           <td class="status-${b.status}">${b.status}</td>
+          <td>
+            ${b.status !== "cancelled" ? `<button onclick="cancelBooking('${b.id}')">❌ Cancel</button>` : ""}
+            ${b.status === "pending" ? `<button onclick="markPaid('${b.id}')">✅ Mark Paid</button>` : ""}
+          </td>
         `;
         tbody.appendChild(tr);
       });
@@ -193,10 +193,24 @@
       loadSlots();
     }
 
-    // initial load + auto refresh
+    async function cancelBooking(id) {
+      await fetch(`/api/bookings/${id}/cancel`, { method: "POST" });
+      loadBookings();
+    }
+
+    async function markPaid(id) {
+      await fetch(`/api/bookings/${id}/paid`, { method: "POST" });
+      loadBookings();
+    }
+
+    // auto-refresh every 10s
+    setInterval(() => {
+      loadSlots();
+      loadBookings();
+    }, 10000);
+
     loadSlots();
     loadBookings();
-    setInterval(loadBookings, 10000); // refresh bookings every 10s
   </script>
 </body>
 </html>

@@ -177,9 +177,17 @@ Rules:
         return {"status": "error", "reply": f"⚠️ Error: {str(e)}"}
 
 # ---------- Klarna ----------
+class KlarnaPaymentRequest(BaseModel):
+    amount: float
+    service: str
+    customer_name: str
+    booking_id: str | None = None   # <-- add this
+
 @app.post("/pay/klarna")
 async def pay_with_klarna(payment: KlarnaPaymentRequest):
-    order_id = str(uuid.uuid4())
+    # Use the booking id as reference so we can mark it paid later
+    reference = payment.booking_id or str(uuid.uuid4())
+
     data = {
         "purchase_country": "SE",
         "purchase_currency": "SEK",
@@ -189,7 +197,7 @@ async def pay_with_klarna(payment: KlarnaPaymentRequest):
         "order_lines": [
             {
                 "type": "physical",
-                "reference": order_id,
+                "reference": reference,   # <-- important for mapping back to booking
                 "name": payment.service,
                 "quantity": 1,
                 "unit_price": int(payment.amount * 100),
@@ -199,10 +207,11 @@ async def pay_with_klarna(payment: KlarnaPaymentRequest):
             }
         ],
         "merchant_urls": {
+            # Klarna will substitute {checkout.order.id} when they redirect the shopper
             "terms": f"{PUBLIC_URL}/terms",
-            "checkout": f"{PUBLIC_URL}/checkout?klarna_order_id={order_id}",
-            "confirmation": f"{PUBLIC_URL}/confirmation?klarna_order_id={order_id}",
-            "push": f"{PUBLIC_URL}/klarna/push?klarna_order_id={order_id}"
+            "checkout": f"{PUBLIC_URL}/checkout?klarna_order_id={{checkout.order.id}}",
+            "confirmation": f"{PUBLIC_URL}/confirmation?klarna_order_id={{checkout.order.id}}",
+            "push": f"{PUBLIC_URL}/klarna/push?klarna_order_id={{checkout.order.id}}"
         }
     }
 
@@ -210,9 +219,9 @@ async def pay_with_klarna(payment: KlarnaPaymentRequest):
         f"{KLARNA_API_URL}/checkout/v3/orders",
         auth=(KLARNA_USERNAME, KLARNA_PASSWORD),
         headers={"Content-Type": "application/json"},
-        json=data
+        json=data,
+        timeout=20
     )
-
     if response.status_code != 200:
         try:
             error_data = response.json()
@@ -220,39 +229,35 @@ async def pay_with_klarna(payment: KlarnaPaymentRequest):
             error_data = response.text
         raise HTTPException(status_code=response.status_code, detail=error_data)
 
-    # return Klarna's full JSON (includes html_snippet)
+    # Return full Klarna JSON (has html_snippet + order_id)
     return response.json()
-from fastapi import Request
 
 @app.post("/klarna/push")
-async def klarna_push(request: Request, klarna_order_id: str, db: Session = Depends(get_db)):
-    """
-    Klarna will call this when an order status changes.
-    We'll check the status and update the booking if paid.
-    """
-    # Fetch order details from Klarna
-    response = requests.get(
+async def klarna_push(klarna_order_id: str, db: Session = Depends(get_db)):
+    # Read Klarna order
+    r = requests.get(
         f"{KLARNA_API_URL}/checkout/v3/orders/{klarna_order_id}",
         auth=(KLARNA_USERNAME, KLARNA_PASSWORD),
-        headers={"Content-Type": "application/json"}
+        headers={"Content-Type": "application/json"},
+        timeout=20
     )
+    if r.status_code != 200:
+        raise HTTPException(status_code=500, detail=r.text)
 
-    if response.status_code != 200:
-        raise HTTPException(status_code=500, detail=response.text)
-
-    order = response.json()
+    order = r.json()
     status = order.get("status")
+    # When checkout completed, the line reference is our booking id
+    lines = order.get("order_lines", [])
+    ref = lines[0].get("reference") if lines else None
 
-    if status == "checkout_complete":
-        # Find matching booking by reference (we stored reference = order_id)
-        reference = order["order_lines"][0]["reference"]
-        booking = db.query(Booking).filter_by(id=reference).first()
+    if status == "checkout_complete" and ref:
+        booking = db.query(Booking).filter_by(id=ref).first()
         if booking:
             booking.status = "paid"
             db.commit()
-            return {"status": "updated", "booking_id": booking.id}
+            return {"updated": True, "booking_id": booking.id}
 
-    return {"status": "ignored", "klarna_status": status}
+    return {"updated": False, "status": status}
 
 # ---------- Slots ----------
 @app.get("/api/slots")
@@ -299,10 +304,53 @@ async def get_bookings(db: Session = Depends(get_db)):
         }
         for b in bookings
     ]
-@app.get("/terms")
+@app.get("/terms", response_class=HTMLResponse)
 async def terms():
-    return HTMLResponse("<h1>Terms & Conditions</h1><p>Test terms page for Klarna.</p>")
+    return HTMLResponse("<h1>Terms & Conditions</h1><p>Test page for Klarna.</p>")
 
-@app.get("/confirmation")
-async def confirmation(klarna_order_id: str):
-    return HTMLResponse(f"<h1>Payment Confirmation</h1><p>Order {klarna_order_id} confirmed.</p>")
+@app.get("/confirmation", response_class=HTMLResponse)
+async def confirmation(klarna_order_id: str = ""):
+    return HTMLResponse(f"<h1>Payment Confirmation</h1><p>Klarna order: {klarna_order_id}</p>")
+
+@app.get("/checkout", response_class=HTMLResponse)
+async def checkout(klarna_order_id: str, request: Request):
+    # Fetch Klarna order to get the latest html_snippet and render it full-page.
+    response = requests.get(
+        f"{KLARNA_API_URL}/checkout/v3/orders/{klarna_order_id}",
+        auth=(KLARNA_USERNAME, KLARNA_PASSWORD),
+        headers={"Content-Type": "application/json"},
+        timeout=20
+    )
+    if response.status_code != 200:
+        return HTMLResponse(f"<h1>Klarna error</h1><pre>{response.text}</pre>", status_code=500)
+
+    order = response.json()
+    snippet = order.get("html_snippet", "")
+    # Minimal HTML shell to host Klarna snippet
+    html = f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+      <title>Klarna Checkout</title></head><body>{snippet}</body></html>"""
+    return HTMLResponse(html)
+
+@app.post("/api/bookings/{booking_id}/cancel")
+async def cancel_booking(booking_id: str):
+    db = SessionLocal()
+    booking = db.query(Booking).filter_by(id=booking_id).first()
+    if not booking:
+        db.close()
+        raise HTTPException(status_code=404, detail="Booking not found")
+    booking.status = "cancelled"
+    db.commit()
+    db.close()
+    return {"status": "cancelled", "booking_id": booking_id}
+
+@app.post("/api/bookings/{booking_id}/paid")
+async def mark_booking_paid(booking_id: str):
+    db = SessionLocal()
+    booking = db.query(Booking).filter_by(id=booking_id).first()
+    if not booking:
+        db.close()
+        raise HTTPException(status_code=404, detail="Booking not found")
+    booking.status = "paid"
+    db.commit()
+    db.close()
+    return {"status": "paid", "booking_id": booking_id}

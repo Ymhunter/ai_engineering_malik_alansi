@@ -30,6 +30,7 @@
       -webkit-overflow-scrolling: touch;
       display: flex;
       flex-direction: column;
+      padding-bottom: 80px; /* prevent input overlap */
     }
 
     .msg {
@@ -136,36 +137,32 @@
   <script>
     const chat = document.getElementById("chat");
     const input = document.getElementById("userInput");
+    const conversation = []; // keep rolling history
 
-    // store short conversation history so backend can use it
-    const conversation = [];
     function scrollToBottom() {
-  requestAnimationFrame(() => {
-    chat.scrollTop = chat.scrollHeight;
-  });
-}
+      requestAnimationFrame(() => {
+        chat.scrollTop = chat.scrollHeight;
+      });
+    }
 
-
-    
     function appendMessage(text, sender="bot") {
-  const div = document.createElement("div");
-  div.className = "msg " + sender;
-  div.innerHTML = text;
-  chat.appendChild(div);
-  scrollToBottom();   // ✅ use helper
+      const div = document.createElement("div");
+      div.className = "msg " + sender;
+      div.innerHTML = text;
+      chat.appendChild(div);
+      scrollToBottom();
 
-  if (sender === "bot") {
-    conversation.push({ role: "assistant", content: stripHTML(text) });
-  }
-  if (sender === "user") {
-    conversation.push({ role: "user", content: text });
-  }
+      if (sender === "bot") {
+        conversation.push({ role: "assistant", content: stripHTML(text) });
+      }
+      if (sender === "user") {
+        conversation.push({ role: "user", content: text });
+      }
 
-  while (conversation.length > 16) {
-    conversation.shift();
-  }
-}
-
+      while (conversation.length > 16) {
+        conversation.shift();
+      }
+    }
 
     function stripHTML(html) {
       const tmp = document.createElement("div");
@@ -198,42 +195,50 @@
         appendMessage(data.reply, "bot");
 
         if (data.status === "reserved") {
+          const bookingId = data.booking_id;
           const payBtn = document.createElement("button");
           payBtn.innerText = "💳 Pay with Klarna";
           payBtn.className = "pay-btn";
-          payBtn.onclick = () => payWithKlarna("Haircut", "Customer", 200);
+          payBtn.onclick = () => payWithKlarna("Haircut", "Customer", 200, bookingId);
           chat.appendChild(payBtn);
-          chat.scrollTop = chat.scrollHeight;
+          scrollToBottom();
         }
       } catch (err) {
         appendMessage("⚠️ Error: " + err.message, "bot");
       }
     }
 
-  async function payWithKlarna(service, customer, amount) {
-    try {
-      const res = await fetch("/pay/klarna", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ service, customer_name: customer, amount })
-      });
-      const data = await res.json();
+    async function payWithKlarna(service, customer, amount, bookingId) {
+      try {
+        const res = await fetch("/pay/klarna", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ service, customer_name: customer, amount, booking_id: bookingId })
+        });
+        const data = await res.json();
 
-      if (data.html_snippet) {
-        // 👉 Insert Klarna checkout iframe at the body level
-        const container = document.createElement("div");
-        container.id = "klarna-checkout";
-        container.innerHTML = data.html_snippet;
-        document.body.appendChild(container);  // ✅ safer than appending inside chat
+        if (data.html_snippet) {
+          const container = document.createElement("div");
+          container.id = "klarna-checkout";
+          container.innerHTML = data.html_snippet;
+          document.body.appendChild(container); // put at body level
+          scrollToBottom();
 
-        scrollToBottom();  // make sure view follows new content
-      } else {
-        appendMessage("⚠️ Klarna error: " + JSON.stringify(data), "bot");
+          if (data.order_id) {
+            const a = document.createElement("a");
+            a.href = `/checkout?klarna_order_id=${data.order_id}`;
+            a.textContent = "Open full checkout";
+            a.style.display = "block";
+            a.style.margin = "10px 15px";
+            chat.appendChild(a);
+          }
+        } else {
+          appendMessage("⚠️ Klarna error: " + JSON.stringify(data), "bot");
+        }
+      } catch (err) {
+        appendMessage("⚠️ Payment error: " + err.message, "bot");
       }
-    } catch (err) {
-      appendMessage("⚠️ Payment error: " + err.message, "bot");
     }
-  }
 
     input.addEventListener("keypress", (e) => {
       if (e.key === "Enter") sendMessage();
