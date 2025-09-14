@@ -188,7 +188,7 @@ async def pay_with_klarna(payment: KlarnaPaymentRequest):
         "order_tax_amount": 0,
         "order_lines": [
             {
-                "type": "service",
+                "type": "physical",  # ✅ Klarna accepts this
                 "reference": order_id,
                 "name": payment.service,
                 "quantity": 1,
