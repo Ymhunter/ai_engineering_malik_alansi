@@ -35,19 +35,19 @@ Base = declarative_base()
 # ------------------------------
 # Models
 # ------------------------------
+from datetime import datetime
+
 class Booking(Base):
     __tablename__ = "bookings"
 
     id = Column(String, primary_key=True, index=True)   # UUID
     customer_name = Column(String, index=True)
     service = Column(String)
-    date = Column(String, index=True)   # YYYY-MM-DD
-    time = Column(String, index=True)   # HH:MM
+    date = Column(String)   # stored as YYYY-MM-DD
+    time = Column(String)   # stored as HH:MM
     status = Column(String, default="pending")  # pending / paid / cancelled
+    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())  # NEW
 
-    __table_args__ = (
-        Index("ix_booking_date_time", "date", "time"),
-    )
 
 
 class Slot(Base):
