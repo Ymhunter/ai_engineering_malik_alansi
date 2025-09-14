@@ -191,11 +191,18 @@ Your task:
 # ------------------------------
 @app.post("/pay/klarna")
 async def pay_with_klarna(payment: KlarnaPaymentRequest):
-    # Use booking_id as reference so we can mark it paid on push
-    reference = payment.booking_id or str(uuid.uuid4())
-    total = int(payment.amount * 100)
+    # Basic input validation
+    if not KLARNA_USERNAME or not KLARNA_PASSWORD:
+        raise HTTPException(status_code=500, detail="Klarna credentials are missing.")
+    if payment.amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be greater than 0.")
 
-    data = {
+    # Use booking_id so we can find the booking on Klarna push
+    reference = payment.booking_id or str(uuid.uuid4())
+    order_id = str(uuid.uuid4())  # our own id for merchant_urls
+    total = int(payment.amount * 100)  # minor units (öre)
+
+    payload = {
         "purchase_country": "SE",
         "purchase_currency": "SEK",
         "locale": "sv-SE",
@@ -203,9 +210,9 @@ async def pay_with_klarna(payment: KlarnaPaymentRequest):
         "order_tax_amount": 0,
         "order_lines": [
             {
-                "type": "physical",
-                "reference": reference,  # <-- important
-                "name": payment.service,
+                "type": "physical",          # must be a valid Klarna line type
+                "reference": reference,      # <--- booking_id (or fallback)
+                "name": payment.service or "Service",
                 "quantity": 1,
                 "unit_price": total,
                 "total_amount": total,
@@ -214,30 +221,44 @@ async def pay_with_klarna(payment: KlarnaPaymentRequest):
             }
         ],
         "merchant_urls": {
+            # Use our own generated order_id in URLs (no {checkout.order.id} placeholders)
             "terms": f"{PUBLIC_URL}/terms",
-            # Use placeholders; keep double braces so Python doesn't format them
-            "checkout": f"{PUBLIC_URL}/checkout?klarna_order_id={{checkout.order.id}}",
-            "confirmation": f"{PUBLIC_URL}/confirmation?klarna_order_id={{checkout.order.id}}",
-            "push": f"{PUBLIC_URL}/klarna/push?klarna_order_id={{checkout.order.id}}"
+            "checkout": f"{PUBLIC_URL}/checkout?klarna_order_id={order_id}",
+            "confirmation": f"{PUBLIC_URL}/confirmation?klarna_order_id={order_id}",
+            "push": f"{PUBLIC_URL}/klarna/push?klarna_order_id={order_id}",
         }
     }
 
-    response = requests.post(
-        f"{KLARNA_API_URL}/checkout/v3/orders",
-        auth=(KLARNA_USERNAME, KLARNA_PASSWORD),
-        headers={"Content-Type": "application/json"},
-        json=data,
-        timeout=20
-    )
+    try:
+        resp = requests.post(
+            f"{KLARNA_API_URL}/checkout/v3/orders",
+            auth=(KLARNA_USERNAME, KLARNA_PASSWORD),
+            headers={"Content-Type": "application/json"},
+            json=payload,
+            timeout=20
+        )
+    except requests.RequestException as e:
+        raise HTTPException(status_code=502, detail=f"Klarna request failed: {e}")
 
-    if response.status_code != 200:
+    # Forward Klarna error details if not 200
+    if resp.status_code != 200:
         try:
-            detail = response.json()
+            detail = resp.json()
         except Exception:
-            detail = response.text
-        raise HTTPException(status_code=response.status_code, detail=detail)
+            detail = resp.text
+        raise HTTPException(status_code=resp.status_code, detail=detail)
 
-    return response.json()
+    klarna = resp.json()
+
+    # Return what the frontend actually needs
+    # - klarna['order_id'] is Klarna's own id (used by /checkout to fetch html_snippet)
+    # - html_snippet can be used if you want to embed directly (we recommend redirect to /checkout)
+    return {
+        "order_id": klarna.get("order_id"),
+        "html_snippet": klarna.get("html_snippet"),
+        "reference": reference,     # booking_id echo
+        "our_order_id": order_id    # the one we injected into merchant_urls
+    }
 
 # ------------------------------
 # Klarna Push: mark booking paid
