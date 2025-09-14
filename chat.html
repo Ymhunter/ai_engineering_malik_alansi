@@ -133,8 +133,7 @@
     <input id="userInput" placeholder="Type your message..." />
     <button onclick="sendMessage()">Send</button>
   </div>
-
-  <script>
+<script>
     const chat = document.getElementById("chat");
     const input = document.getElementById("userInput");
     const conversation = []; // keep rolling history
@@ -196,10 +195,12 @@
 
         if (data.status === "reserved") {
           const bookingId = data.booking_id;
+          const customerName = stripHTML(data.reply).match(/for (.+?) at/)?.[1] || "Customer";
+
           const payBtn = document.createElement("button");
           payBtn.innerText = "💳 Pay with Klarna";
           payBtn.className = "pay-btn";
-          payBtn.onclick = () => payWithKlarna("Haircut", "Customer", 200, bookingId);
+          payBtn.onclick = () => payWithKlarna("Haircut", customerName, 200, bookingId);
           chat.appendChild(payBtn);
           scrollToBottom();
         }
@@ -217,21 +218,8 @@
         });
         const data = await res.json();
 
-        if (data.html_snippet) {
-          const container = document.createElement("div");
-          container.id = "klarna-checkout";
-          container.innerHTML = data.html_snippet;
-          document.body.appendChild(container); // put at body level
-          scrollToBottom();
-
-          if (data.order_id) {
-            const a = document.createElement("a");
-            a.href = `/checkout?klarna_order_id=${data.order_id}`;
-            a.textContent = "Open full checkout";
-            a.style.display = "block";
-            a.style.margin = "10px 15px";
-            chat.appendChild(a);
-          }
+        if (data.order_id) {
+          window.location.href = `/checkout?klarna_order_id=${data.order_id}`;
         } else {
           appendMessage("⚠️ Klarna error: " + JSON.stringify(data), "bot");
         }
