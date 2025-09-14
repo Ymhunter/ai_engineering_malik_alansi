@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 import requests
 from openai import OpenAI
+from pathlib import Path
 
 from database import SessionLocal, Booking, Slot
 
@@ -33,6 +34,8 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 # FastAPI app
 # ------------------------------
 app = FastAPI(title="Barbershop Booking AI Agent")
+
+BASE_DIR = Path(__file__).resolve().parent
 
 # ------------------------------
 # DB Dependency
@@ -59,12 +62,17 @@ class KlarnaPaymentRequest(BaseModel):
 # Helpers
 # ------------------------------
 def clean_expired_slots(db: Session):
-    """Delete expired slots (string comparison works for YYYY-MM-DD HH:MM)."""
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    """Delete expired slots (past datetime)."""
+    now = datetime.now()
     expired = db.query(Slot).all()
     for s in expired:
-        if f"{s.date} {s.time}" <= now_str:
-            db.delete(s)
+        try:
+            slot_dt = datetime.strptime(f"{s.date} {s.time}", "%Y-%m-%d %H:%M")
+            if slot_dt < now:
+                db.delete(s)
+        except ValueError:
+            # Skip bad format
+            continue
     db.commit()
 
 # ------------------------------
@@ -72,11 +80,11 @@ def clean_expired_slots(db: Session):
 # ------------------------------
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    return FileResponse("chat.html")   # same folder as main.py
+    return FileResponse(BASE_DIR / "chat.html")
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard():
-    return FileResponse("dashboard.html")   # same folder as main.py
+    return FileResponse(BASE_DIR / "dashboard.html")
 
 @app.get("/chat/test")
 async def chat_test():
@@ -91,16 +99,18 @@ async def chat_with_agent(user_input: ChatMessage, db: Session = Depends(get_db)
         clean_expired_slots(db)
 
         slots = db.query(Slot).filter_by(available=True).all()
-        future_slots = [f"{s.date} {s.time}" for s in slots]
-        slot_info = ", ".join(future_slots) if future_slots else "No slots available"
+        future_slots = [f"- {s.date} at {s.time}" for s in slots]
+        slot_info = "\n".join(future_slots) if future_slots else "No slots available"
 
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
-                    "content": f"""You are a polite barbershop assistant.
-Available slots: {slot_info}.
+                    "content": f"""You are a polite barbershop assistant. 
+Available slots:
+{slot_info}
+
 Help the user book a haircut by asking for:
 - Customer name
 - Date (YYYY-MM-DD)
