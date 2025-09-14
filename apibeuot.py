@@ -79,11 +79,11 @@ def clean_expired_slots(db: Session):
 # ------------------------------
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    return FileResponse("static/chat.html")
+    return FileResponse("chat.html")
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard():
-    return FileResponse("static/dashboard.html")
+    return FileResponse("dashboard.html")
 
 # ------------------------------
 # Chat endpoint with GPT
