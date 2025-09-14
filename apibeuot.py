@@ -325,21 +325,64 @@ async def confirmation(klarna_order_id: str = "", db: Session = Depends(get_db))
             if ref:
                 booking_info = db.query(Booking).filter_by(id=ref).first()
 
-    if booking_info:
-        return HTMLResponse(f"""
-            <h1>Booking Status: {booking_info.status}</h1>
-            <p>Thank you {booking_info.customer_name}!</p>
-            <p>Your booking for <b>{booking_info.service}</b> is recorded.</p>
-            <ul>
-                <li>Date: {booking_info.date}</li>
-                <li>Time: {booking_info.time}</li>
-                <li>Status: {booking_info.status} (Klarna: {status})</li>
-                <li>Booking ID: {booking_info.id}</li>
-            </ul>
-            <p>If you just paid, please refresh after a few seconds — Klarna may still be processing.</p>
-        """)
-    else:
+    if not booking_info:
         return HTMLResponse("<h1>⚠️ No booking found for this payment</h1>")
+
+    return HTMLResponse(f"""
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <title>Payment Confirmation</title>
+        <style>
+          body {{
+            font-family: Arial, sans-serif;
+            background: #f9f9f9;
+            padding: 30px;
+            text-align: center;
+          }}
+          .status {{
+            font-size: 1.5em;
+            margin-top: 20px;
+          }}
+          .paid {{ color: #4caf50; font-weight: bold; }}
+          .pending {{ color: #ff9800; font-weight: bold; }}
+        </style>
+      </head>
+      <body>
+        <h1>Booking Confirmation</h1>
+        <p>Thank you, {booking_info.customer_name}!</p>
+        <p>Your booking for <b>{booking_info.service}</b> is recorded:</p>
+        <ul style="list-style:none; padding:0;">
+          <li><b>Date:</b> {booking_info.date}</li>
+          <li><b>Time:</b> {booking_info.time}</li>
+          <li><b>Booking ID:</b> {booking_info.id}</li>
+        </ul>
+        <p class="status {booking_info.status}">Current Status: {booking_info.status} (Klarna: {status})</p>
+
+        <script>
+          async function checkStatus() {{
+            try {{
+              const res = await fetch("/api/bookings/{booking_info.id}");
+              if (!res.ok) return;
+              const booking = await res.json();
+              const statusElem = document.querySelector(".status");
+              statusElem.innerText = "Current Status: " + booking.status;
+              statusElem.className = "status " + booking.status;
+
+              // stop refreshing if paid or cancelled
+              if (booking.status === "paid" || booking.status === "cancelled") {{
+                clearInterval(polling);
+              }}
+            }} catch (err) {{
+              console.error("Error checking booking status", err);
+            }}
+          }}
+          const polling = setInterval(checkStatus, 5000);
+        </script>
+      </body>
+      </html>
+    """)
 
 # Klarna required pages
 # ------------------------------
@@ -397,21 +440,20 @@ async def delete_slot(date: str, time: str, db: Session = Depends(get_db)):
 # ------------------------------
 # Bookings API
 # ------------------------------
-@app.get("/api/bookings")
-async def get_bookings(db: Session = Depends(get_db)):
-    clean_stale_bookings(db)
-    bookings = db.query(Booking).all()
-    return [
-        {
-            "id": b.id,
-            "customer_name": b.customer_name,
-            "service": b.service,
-            "date": b.date,
-            "time": b.time,
-            "status": b.status,
-        }
-        for b in bookings
-    ]
+@app.get("/api/bookings/{booking_id}")
+async def get_booking(booking_id: str, db: Session = Depends(get_db)):
+    booking = db.query(Booking).filter_by(id=booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    return {
+        "id": booking.id,
+        "customer_name": booking.customer_name,
+        "service": booking.service,
+        "date": booking.date,
+        "time": booking.time,
+        "status": booking.status
+    }
+
 
 @app.post("/api/bookings/{booking_id}/cancel")
 async def cancel_booking(booking_id: str, db: Session = Depends(get_db)):

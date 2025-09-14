@@ -219,11 +219,10 @@
     const data = await res.json();
 
     if (data.order_id) {
-      // ✅ redirect straight to confirmation page
-      window.location.href = `/confirmation?klarna_order_id=${data.order_id}`;
+      // ✅ go to Klarna checkout page
+      window.location.href = `/checkout?klarna_order_id=${data.order_id}`;
     } else if (data.detail?.order_id) {
-      // fallback if backend wrapped Klarna response
-      window.location.href = `/confirmation?klarna_order_id=${data.detail.order_id}`;
+      window.location.href = `/checkout?klarna_order_id=${data.detail.order_id}`;
     } else {
       appendMessage("⚠️ Klarna error: " + JSON.stringify(data), "bot");
     }
@@ -231,6 +230,7 @@
     appendMessage("⚠️ Payment error: " + err.message, "bot");
   }
 }
+
 
     input.addEventListener("keypress", (e) => {
       if (e.key === "Enter") sendMessage();
