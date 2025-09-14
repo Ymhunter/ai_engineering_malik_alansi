@@ -210,24 +210,30 @@
       }
     }
 
-    async function payWithKlarna(service, customer, amount) {
-  try {
-    const res = await fetch("/pay/klarna", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ service, customer_name: customer, amount })
-    });
-    const data = await res.json();
+  async function payWithKlarna(service, customer, amount) {
+    try {
+      const res = await fetch("/pay/klarna", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ service, customer_name: customer, amount })
+      });
+      const data = await res.json();
 
-    if (data.redirect_url) {
-      window.location.href = data.redirect_url;
-    } else {
-      appendMessage("⚠️ Klarna error: " + JSON.stringify(data), "bot");
+      if (data.html_snippet) {
+        // 👉 Insert Klarna checkout iframe at the body level
+        const container = document.createElement("div");
+        container.id = "klarna-checkout";
+        container.innerHTML = data.html_snippet;
+        document.body.appendChild(container);  // ✅ safer than appending inside chat
+
+        scrollToBottom();  // make sure view follows new content
+      } else {
+        appendMessage("⚠️ Klarna error: " + JSON.stringify(data), "bot");
+      }
+    } catch (err) {
+      appendMessage("⚠️ Payment error: " + err.message, "bot");
     }
-  } catch (err) {
-    appendMessage("⚠️ Payment error: " + err.message, "bot");
   }
-}
 
     input.addEventListener("keypress", (e) => {
       if (e.key === "Enter") sendMessage();

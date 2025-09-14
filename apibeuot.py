@@ -269,3 +269,10 @@ async def get_bookings(db: Session = Depends(get_db)):
         }
         for b in bookings
     ]
+@app.get("/terms")
+async def terms():
+    return HTMLResponse("<h1>Terms & Conditions</h1><p>Test terms page for Klarna.</p>")
+
+@app.get("/confirmation")
+async def confirmation(klarna_order_id: str):
+    return HTMLResponse(f"<h1>Payment Confirmation</h1><p>Order {klarna_order_id} confirmed.</p>")
