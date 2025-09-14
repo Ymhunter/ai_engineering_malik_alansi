@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <title>Barbershop Chatbot</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+
   <style>
     * {
   box-sizing: border-box;
@@ -155,7 +156,33 @@ header {
   font-weight: bold;
   font-size: 15px;
 }
+@media (max-width: 600px) {
+  header {
+    font-size: 16px;
+    padding: 10px;
+  }
 
+  .quick-questions {
+    gap: 6px;
+    padding: 6px;
+  }
+  .quick-questions button {
+    font-size: 13px;
+    padding: 5px 10px;
+  }
+
+  #inputArea {
+    padding: 6px;
+  }
+  #inputArea input {
+    font-size: 14px;
+    padding: 10px;
+  }
+  #inputArea button {
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+}
   </style>
 </head>
 <body>
