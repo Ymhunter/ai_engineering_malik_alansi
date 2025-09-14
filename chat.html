@@ -139,26 +139,33 @@
 
     // store short conversation history so backend can use it
     const conversation = [];
+    function scrollToBottom() {
+  requestAnimationFrame(() => {
+    chat.scrollTop = chat.scrollHeight;
+  });
+}
 
+
+    
     function appendMessage(text, sender="bot") {
-      const div = document.createElement("div");
-      div.className = "msg " + sender;
-      div.innerHTML = text;
-      chat.appendChild(div);
-      chat.scrollTop = chat.scrollHeight;
+  const div = document.createElement("div");
+  div.className = "msg " + sender;
+  div.innerHTML = text;
+  chat.appendChild(div);
+  scrollToBottom();   // ✅ use helper
 
-      if (sender === "bot") {
-        conversation.push({ role: "assistant", content: stripHTML(text) });
-      }
-      if (sender === "user") {
-        conversation.push({ role: "user", content: text });
-      }
+  if (sender === "bot") {
+    conversation.push({ role: "assistant", content: stripHTML(text) });
+  }
+  if (sender === "user") {
+    conversation.push({ role: "user", content: text });
+  }
 
-      // keep conversation short (last 16 messages = 8 turns)
-      while (conversation.length > 16) {
-        conversation.shift();
-      }
-    }
+  while (conversation.length > 16) {
+    conversation.shift();
+  }
+}
+
 
     function stripHTML(html) {
       const tmp = document.createElement("div");
