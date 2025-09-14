@@ -35,7 +35,6 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 app = FastAPI(title="Barbershop Booking AI Agent")
 
 # Serve static folder (chat.html, dashboard.html)
-app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # ------------------------------
 # Pydantic models
@@ -68,11 +67,11 @@ def clean_expired_slots(db):
 # ------------------------------
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    return FileResponse("static/chat.html")
+    return FileResponse("chat.html")
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard():
-    return FileResponse("static/dashboard.html")
+    return FileResponse("dashboard.html")
 
 # ------------------------------
 # Chat endpoint with ChatGPT
