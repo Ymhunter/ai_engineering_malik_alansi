@@ -3,24 +3,33 @@
 <head>
   <meta charset="UTF-8" />
   <title>Barbershop Chatbot</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
   <style>
     /* Reset */
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
-    body {
-      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    html, body {
+      height: 100%;
       background: #f0f2f5;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      overflow: hidden; /* prevent layout jump when keyboard opens */
+    }
+
+    body {
       display: flex;
       flex-direction: column;
-      height: 100vh;
+      justify-content: space-between;
+      align-items: center;
     }
 
     /* Chat container */
     #chat {
       flex: 1;
-      overflow-y: auto;
+      width: 100%;
+      max-width: 600px;
       padding: 15px;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
       display: flex;
       flex-direction: column;
     }
@@ -33,6 +42,7 @@
       margin: 6px 0;
       line-height: 1.5;
       word-wrap: break-word;
+      font-size: 15px;
     }
     .bot {
       background: #fff;
@@ -52,8 +62,11 @@
       padding: 10px;
       background: #fff;
       border-top: 1px solid #ddd;
-      position: sticky;
+      position: fixed;
       bottom: 0;
+      left: 0;
+      width: 100%;
+      max-width: 600px;
     }
     #inputArea input {
       flex: 1;
@@ -135,6 +148,7 @@
 
   <script>
     const chat = document.getElementById("chat");
+    const input = document.getElementById("userInput");
 
     function appendMessage(text, sender="bot") {
       const div = document.createElement("div");
@@ -144,11 +158,18 @@
       chat.scrollTop = chat.scrollHeight;
     }
 
-    // Handle quick start
+    // Quick start buttons
     function quickAsk(question) {
       document.getElementById("userInput").value = question;
       sendMessage();
     }
+
+    // Auto scroll on keyboard open
+    input.addEventListener("focus", () => {
+      setTimeout(() => {
+        chat.scrollTop = chat.scrollHeight;
+      }, 300); // wait for keyboard animation
+    });
 
     // Detect Klarna redirect success
     window.onload = () => {
@@ -160,7 +181,6 @@
     };
 
     async function sendMessage() {
-      const input = document.getElementById("userInput");
       const text = input.value.trim();
       if (!text) return;
 

@@ -4,11 +4,13 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 import requests, base64, uuid, os, re, json
-from datetime import date
+from datetime import date, datetime
 from dotenv import load_dotenv
 from database import SessionLocal, Booking, Slot
 
+# ------------------------------
 # Load env
+# ------------------------------
 load_dotenv()
 
 KLARNA_USERNAME = os.getenv("KLARNA_USERNAME")
@@ -24,6 +26,9 @@ if not KLARNA_USERNAME or not KLARNA_PASSWORD:
 client = OpenAI(api_key=OPENAI_API_KEY)
 KLARNA_API_URL = "https://api.playground.klarna.com"
 
+# ------------------------------
+# App
+# ------------------------------
 app = FastAPI(title="Barbershop Booking AI Agent with Klarna")
 
 app.add_middleware(
@@ -112,7 +117,6 @@ RULES:
     ]
 
 conversation_history = []
-
 klarna_orders = {}
 
 # ------------------------------
@@ -136,16 +140,22 @@ async def get_bookings():
     bookings = db.query(Booking).all()
     result = [b.__dict__ for b in bookings]
     db.close()
-    for r in result: r.pop("_sa_instance_state", None)
+    for r in result:
+        r.pop("_sa_instance_state", None)
     return result
 
 @app.get("/api/slots")
 async def get_slots():
     db = SessionLocal()
+    now = datetime.now()
     slots = db.query(Slot).filter_by(available=True).all()
+
     result = {}
     for s in slots:
-        result.setdefault(s.date, []).append(s.time)
+        slot_dt = datetime.strptime(f"{s.date} {s.time}", "%Y-%m-%d %H:%M")
+        if slot_dt > now:  # ✅ Only include future slots
+            result.setdefault(s.date, []).append(s.time)
+
     db.close()
     return result
 
@@ -179,6 +189,11 @@ async def chat_with_agent(user_input: ChatMessage):
     if booking_match:
         try:
             booking_data = json.loads(booking_match.group())
+            slot_dt = datetime.strptime(f"{booking_data['date']} {booking_data['time']}", "%Y-%m-%d %H:%M")
+
+            if slot_dt <= datetime.now():
+                return {"status": "unavailable", "reply": "❌ Sorry, that time has already passed."}
+
             if not check_availability(db, booking_data["date"], booking_data["time"]):
                 return {"status": "unavailable", "reply": "❌ Sorry, that slot is not available."}
 
