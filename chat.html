@@ -20,9 +20,9 @@
       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     #chat {
-      flex: 1; padding: 15px; display: flex;
-      flex-direction: column; overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
+      flex: 1; padding: 15px;
+      display: flex; flex-direction: column;
+      overflow-y: auto; -webkit-overflow-scrolling: touch;
     }
     .msg {
       max-width: 80%; padding: 12px 16px;
@@ -57,6 +57,20 @@
       color: #000; font-weight: bold; font-size: 15px;
     }
 
+    /* Suggestion chips */
+    .suggestions {
+      display: flex; justify-content: center; flex-wrap: wrap;
+      gap: 10px; margin: 15px 0;
+    }
+    .suggestions button {
+      padding: 8px 16px; border: none;
+      border-radius: 20px; background: #e4e6eb;
+      cursor: pointer; font-size: 14px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      transition: background 0.2s;
+    }
+    .suggestions button:hover { background: #d8dadf; }
+
     /* Calendar styles */
     .calendar {
       background: #fff;
@@ -72,25 +86,16 @@
       margin-bottom: 5px; background: none; box-shadow: none;
       color: #333; font-size: 14px;
     }
-    .calendar table {
-      width: 100%; border-collapse: collapse; text-align: center;
-    }
-    .calendar th {
-      font-size: 12px; padding: 4px;
-    }
+    .calendar table { width: 100%; border-collapse: collapse; text-align: center; }
+    .calendar th { font-size: 12px; padding: 4px; }
     .calendar td {
       width: 14%; height: 40px;
-      border-radius: 6px;
-      cursor: pointer;
+      border-radius: 6px; cursor: pointer;
     }
     .calendar td:hover { background: #eaf3ff; }
     .calendar .has-slot { background: #d0eaff; font-weight: bold; }
     .calendar .today { border: 2px solid #007bff; }
-    .times {
-      margin-top: 10px;
-      display: flex; flex-wrap: wrap;
-      gap: 5px;
-    }
+    .times { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 5px; }
     .time-btn {
       padding: 6px 10px; border-radius: 6px;
       border: 1px solid #007bff; background: #eaf3ff;
@@ -101,9 +106,17 @@
 </head>
 <body>
   <header>💈 Barbershop Assistant</header>
+
   <div id="chat">
     <div class="msg bot">
-      👋 Welcome! Type <b>"book"</b> to see available slots.
+      👋 Welcome! How can I help you today?
+    </div>
+
+    <!-- Floating suggestion chips -->
+    <div class="suggestions" id="suggestions">
+      <button onclick="quickAsk('What services do you offer?')">What services do you offer?</button>
+      <button onclick="quickAsk('What dates are available?')">What dates are available?</button>
+      <button onclick="quickAsk('I want to book a haircut today!')">I want to book a haircut today!</button>
     </div>
   </div>
 
@@ -115,6 +128,7 @@
 <script>
   const chat = document.getElementById("chat");
   const input = document.getElementById("userInput");
+  const suggestions = document.getElementById("suggestions");
   const conversation = [];
 
   function scrollToBottom() { chat.scrollTop = chat.scrollHeight; }
@@ -127,12 +141,18 @@
     if (sender === "user") conversation.push({ role: "user", content: text });
     if (conversation.length > 16) conversation.shift();
   }
+  function quickAsk(text) {
+    suggestions.style.display = "none"; // hide suggestions after first use
+    input.value = text;
+    sendMessage();
+  }
 
   async function sendMessage() {
     const text = input.value.trim();
     if (!text) return;
     appendMessage(text, "user");
     input.value = "";
+    suggestions.style.display = "none"; // hide after any message
 
     if (/book|reserve|appointment/i.test(text)) {
       showCalendar();
@@ -173,50 +193,65 @@
   function buildCalendar(slots) {
     const cal = document.createElement("div");
     cal.className = "calendar";
-    const today = new Date();
+    let monthOffset = 0;
 
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-    const firstDay = monthStart.getDay();
-    const daysInMonth = monthEnd.getDate();
+    function render(offset) {
+      cal.innerHTML = "";
+      monthOffset = offset;
+      const today = new Date();
+      const displayDate = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
+      const year = displayDate.getFullYear();
+      const month = displayDate.getMonth();
+      const monthStart = new Date(year, month, 1);
+      const monthEnd = new Date(year, month + 1, 0);
+      const firstDay = monthStart.getDay();
+      const daysInMonth = monthEnd.getDate();
 
-    const header = document.createElement("header");
-    header.innerHTML = `<span>${today.toLocaleString("default", { month: "long" })} ${today.getFullYear()}</span>`;
-    cal.appendChild(header);
+      const header = document.createElement("header");
+      const prevBtn = document.createElement("button");
+      prevBtn.textContent = "<";
+      prevBtn.onclick = () => render(monthOffset - 1);
+      const nextBtn = document.createElement("button");
+      nextBtn.textContent = ">";
+      nextBtn.onclick = () => render(monthOffset + 1);
+      const title = document.createElement("span");
+      title.textContent = displayDate.toLocaleString("default", { month: "long", year: "numeric" });
+      header.appendChild(prevBtn); header.appendChild(title); header.appendChild(nextBtn);
+      cal.appendChild(header);
 
-    const table = document.createElement("table");
-    const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-    const thead = document.createElement("thead");
-    const headRow = document.createElement("tr");
-    days.forEach(d => {
-      const th = document.createElement("th");
-      th.textContent = d;
-      headRow.appendChild(th);
-    });
-    thead.appendChild(headRow); table.appendChild(thead);
+      const table = document.createElement("table");
+      const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+      const thead = document.createElement("thead");
+      const headRow = document.createElement("tr");
+      days.forEach(d => { const th=document.createElement("th"); th.textContent=d; headRow.appendChild(th); });
+      thead.appendChild(headRow); table.appendChild(thead);
 
-    const tbody = document.createElement("tbody");
-    let row = document.createElement("tr");
-    for (let i=0;i<firstDay;i++) row.appendChild(document.createElement("td"));
+      const tbody = document.createElement("tbody");
+      let row = document.createElement("tr");
+      for (let i=0;i<firstDay;i++) row.appendChild(document.createElement("td"));
 
-    for (let d=1; d<=daysInMonth; d++) {
-      const dateStr = today.getFullYear()+"-"+String(today.getMonth()+1).padStart(2,"0")+"-"+String(d).padStart(2,"0");
-      const td = document.createElement("td");
-      td.textContent = d;
+      for (let d=1; d<=daysInMonth; d++) {
+        const dateStr = year+"-"+String(month+1).padStart(2,"0")+"-"+String(d).padStart(2,"0");
+        const td = document.createElement("td"); td.textContent = d;
 
-      if (slots[dateStr]) {
-        td.classList.add("has-slot");
-        td.onclick = () => showTimes(dateStr, slots[dateStr], cal);
+        if (slots[dateStr]) {
+          td.classList.add("has-slot");
+          td.onclick = () => showTimes(dateStr, slots[dateStr], cal);
+        }
+        if (d === new Date().getDate() && month === new Date().getMonth() && year === new Date().getFullYear()) {
+          td.classList.add("today");
+        }
+
+        row.appendChild(td);
+        if ((firstDay + d) % 7 === 0 || d === daysInMonth) {
+          tbody.appendChild(row);
+          row = document.createElement("tr");
+        }
       }
-      if (d === today.getDate()) td.classList.add("today");
-
-      row.appendChild(td);
-      if ((firstDay + d) % 7 === 0 || d === daysInMonth) {
-        tbody.appendChild(row);
-        row = document.createElement("tr");
-      }
+      table.appendChild(tbody); cal.appendChild(table);
     }
-    table.appendChild(tbody); cal.appendChild(table);
+
+    render(0);
     return cal;
   }
 
