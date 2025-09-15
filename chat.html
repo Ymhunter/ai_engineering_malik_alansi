@@ -6,184 +6,71 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 
   <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      height: 100dvh; /* ✅ dynamic height for iOS */
-      display: flex;
-      flex-direction: column;
+      height: 100dvh;
+      display: flex; flex-direction: column;
       font-family: "Segoe UI", Tahoma, sans-serif;
       background: #f0f2f5;
     }
-
-    /* Header */
     header {
-      background: #007bff;
-      color: white;
-      padding: 12px;
-      text-align: center;
-      font-size: 18px;
-      font-weight: bold;
+      background: #007bff; color: white;
+      padding: 12px; text-align: center;
+      font-size: 18px; font-weight: bold;
       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
-
-    /* Chat area */
     #chat {
-      flex: 1;
-      padding: 15px;
-      display: flex;
-      flex-direction: column;
-      overflow-y: auto;               /* ✅ auto scroll */
-      -webkit-overflow-scrolling: touch; /* ✅ smooth iOS scrolling */
+      flex: 1; padding: 15px; display: flex;
+      flex-direction: column; overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
     }
-
-    /* Messages */
     .msg {
-      max-width: 80%;
-      padding: 12px 16px;
-      border-radius: 18px;
-      margin: 6px 0;
-      line-height: 1.5;
-      font-size: 15px;
-      word-wrap: break-word;
-      animation: fadeInUp 0.25s ease;
+      max-width: 80%; padding: 12px 16px;
+      border-radius: 18px; margin: 6px 0;
+      line-height: 1.5; font-size: 15px;
+      word-wrap: break-word; animation: fadeInUp 0.25s ease;
     }
-    .bot {
-      background: #fff;
-      align-self: flex-start;
-      border: 1px solid #ddd;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    }
-    .user {
-      background: #007bff;
-      color: white;
-      align-self: flex-end;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
+    .bot { background: #fff; align-self: flex-start; border: 1px solid #ddd; }
+    .user { background: #007bff; color: white; align-self: flex-end; }
     @keyframes fadeInUp {
       from { opacity: 0; transform: translateY(10px); }
       to   { opacity: 1; transform: translateY(0); }
     }
-
-    /* Footer wrapper (quick-questions + input) */
-    #footer {
-      background: #fff;
-      border-top: 1px solid #ddd;
-      display: flex;
-      flex-direction: column;
-      position: sticky;
-      bottom: 0;
-      width: 100%;
-      max-width: 600px;
-      box-shadow: 0 -2px 4px rgba(0,0,0,0.05);
-    }
-
-    /* Quick-questions horizontal bar */
-    .quick-questions {
-      display: flex;
-      flex-wrap: nowrap;
-      gap: 8px;
-      padding: 8px 10px;
-      overflow-x: auto;
-      overflow-y: hidden;
-      white-space: nowrap;
-      scrollbar-width: none;
-    }
-    .quick-questions::-webkit-scrollbar {
-      display: none;
-    }
-
-    .quick-questions button {
-      flex: 0 0 auto;
-      padding: 6px 14px;
-      border: none;
-      border-radius: 18px;
-      background: #e4e6eb;
-      cursor: pointer;
-      font-size: 14px;
-      white-space: nowrap;
-    }
-    .quick-questions button:hover {
-      background: #d8dadf;
-    }
-
-    /* Input area */
     #inputArea {
-      display: flex;
-      padding: 10px;
-      background: #fff;
-      border-top: 1px solid #eee;
+      display: flex; padding: 10px; background: #fff; border-top: 1px solid #eee;
     }
     #inputArea input {
-      flex: 1;
-      padding: 12px;
-      border: 1px solid #ddd;
-      border-radius: 20px;
-      font-size: 15px;
-      outline: none;
+      flex: 1; padding: 12px; border: 1px solid #ddd;
+      border-radius: 20px; font-size: 15px; outline: none;
     }
     #inputArea button {
-      margin-left: 10px;
-      padding: 12px 16px;
-      border: none;
-      border-radius: 50%;
-      background: #007bff;
-      color: white;
-      font-size: 16px;
-      cursor: pointer;
+      margin-left: 10px; padding: 12px 16px;
+      border: none; border-radius: 50%;
+      background: #007bff; color: white;
+      font-size: 16px; cursor: pointer;
     }
-
-    /* Loading indicator */
-    .loading {
-      font-size: 20px;
-      display: inline-block;
-      margin-left: 5px;
-    }
-
-    /* Pay button */
+    .loading { font-size: 20px; display: inline-block; margin-left: 5px; }
     .pay-btn {
-      margin-top: 10px;
-      padding: 10px 14px;
-      border: none;
-      border-radius: 18px;
-      background: #ffb347;
-      cursor: pointer;
-      color: #000;
-      font-weight: bold;
-      font-size: 15px;
+      margin-top: 10px; padding: 10px 14px;
+      border: none; border-radius: 18px;
+      background: #ffb347; cursor: pointer;
+      color: #000; font-weight: bold; font-size: 15px;
     }
-
-    @media (max-width: 600px) {
-      header {
-        font-size: 16px;
-        padding: 10px;
-      }
-
-      .quick-questions {
-        gap: 6px;
-        padding: 6px;
-      }
-      .quick-questions button {
-        font-size: 13px;
-        padding: 5px 10px;
-      }
-
-      #inputArea {
-        padding: 6px;
-      }
-      #inputArea input {
-        font-size: 14px;
-        padding: 10px;
-      }
-      #inputArea button {
-        padding: 10px 12px;
-        font-size: 14px;
-      }
+    /* Calendar slot picker */
+    .calendar {
+      background: #fff; border: 1px solid #ddd;
+      border-radius: 8px; padding: 10px;
+      margin-top: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      max-width: 300px;
     }
+    .calendar h4 { margin: 5px 0; }
+    .slot-btn {
+      display: inline-block; margin: 4px;
+      padding: 6px 10px; border-radius: 6px;
+      border: 1px solid #007bff; background: #eaf3ff;
+      cursor: pointer; font-size: 14px;
+    }
+    .slot-btn:hover { background: #007bff; color: #fff; }
   </style>
 </head>
 <body>
@@ -191,15 +78,8 @@
   <div id="chat">
     <div class="msg bot">
       👋 Welcome to our Barbershop!  
-      How can I help you today?
+      Type <b>"book"</b> to see available slots.
     </div>
-  </div>
-
-  <!-- Quick Questions Bar -->
-  <div id="quickQuestions" class="quick-questions">
-    <button onclick="quickAsk('What services do you offer?')">What services do you offer?</button>
-    <button onclick="quickAsk('What dates are available?')">What dates are available?</button>
-    <button onclick="quickAsk('I want to book a haircut today!')">I want to book a haircut today!</button>
   </div>
 
   <div id="inputArea">
@@ -219,32 +99,25 @@
   function appendMessage(text, sender="bot") {
     const div = document.createElement("div");
     div.className = "msg " + sender;
-    div.innerHTML = text;
+    div.textContent = text;
     chat.appendChild(div);
     scrollToBottom();
 
-    if (sender === "bot") conversation.push({ role: "assistant", content: stripHTML(text) });
+    if (sender === "bot") conversation.push({ role: "assistant", content: text });
     if (sender === "user") conversation.push({ role: "user", content: text });
     if (conversation.length > 16) conversation.shift();
-  }
-
-  function stripHTML(html) {
-    const tmp = document.createElement("div");
-    tmp.innerHTML = html;
-    return tmp.textContent || tmp.innerText || "";
-  }
-
-  function quickAsk(question) {
-    input.value = question;
-    sendMessage();
   }
 
   async function sendMessage() {
     const text = input.value.trim();
     if (!text) return;
-
     appendMessage(text, "user");
     input.value = "";
+
+    if (/book|reserve|appointment/i.test(text)) {
+      showCalendar();
+      return;
+    }
 
     const loading = document.createElement("span");
     loading.className = "loading";
@@ -263,13 +136,80 @@
       appendMessage(data.reply, "bot");
 
       if (data.status === "reserved") {
-        const bookingId = data.booking_id;
-        const customerName = stripHTML(data.reply).match(/for (.+?) at/)?.[1] || "Customer";
-
         const payBtn = document.createElement("button");
         payBtn.innerText = "💳 Pay with Klarna";
         payBtn.className = "pay-btn";
-        payBtn.onclick = () => payWithKlarna("Haircut", customerName, 200, bookingId);
+        payBtn.onclick = () => payWithKlarna("Haircut", "Customer", 200, data.booking_id);
+        chat.appendChild(payBtn);
+        scrollToBottom();
+      }
+    } catch (err) {
+      loading.remove();
+      appendMessage("⚠️ Error: " + err.message, "bot");
+    }
+  }
+
+  async function showCalendar() {
+    try {
+      const res = await fetch("/api/slots");
+      const slots = await res.json();
+
+      const cal = document.createElement("div");
+      cal.className = "calendar";
+
+      if (Object.keys(slots).length === 0) {
+        cal.innerHTML = "<p>No slots available right now 😢</p>";
+      } else {
+        cal.innerHTML = "<h4>Available Slots</h4>";
+        for (const [date, times] of Object.entries(slots)) {
+          const dateHeader = document.createElement("div");
+          dateHeader.innerHTML = `<strong>${date}</strong>`;
+          cal.appendChild(dateHeader);
+
+          times.forEach(time => {
+            const btn = document.createElement("button");
+            btn.className = "slot-btn";
+            btn.textContent = time;
+            btn.onclick = () => {
+              appendMessage(`I want ${date} at ${time}`, "user");
+              sendBooking(date, time);
+            };
+            cal.appendChild(btn);
+          });
+        }
+      }
+      chat.appendChild(cal);
+      scrollToBottom();
+    } catch (err) {
+      appendMessage("⚠️ Error loading slots", "bot");
+    }
+  }
+
+  async function sendBooking(date, time) {
+    const loading = document.createElement("span");
+    loading.className = "loading";
+    loading.innerText = "⏳...";
+    chat.appendChild(loading);
+    scrollToBottom();
+
+    try {
+      const res = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: `I want ${date} at ${time}`,
+          history: conversation
+        })
+      });
+      const data = await res.json();
+      loading.remove();
+      appendMessage(data.reply, "bot");
+
+      if (data.status === "reserved") {
+        const payBtn = document.createElement("button");
+        payBtn.innerText = "💳 Pay with Klarna";
+        payBtn.className = "pay-btn";
+        payBtn.onclick = () => payWithKlarna("Haircut", "Customer", 200, data.booking_id);
         chat.appendChild(payBtn);
         scrollToBottom();
       }
@@ -290,8 +230,6 @@
 
       if (data.order_id) {
         window.location.href = `/checkout?klarna_order_id=${data.order_id}`;
-      } else if (data.detail?.order_id) {
-        window.location.href = `/checkout?klarna_order_id=${data.detail.order_id}`;
       } else {
         appendMessage("⚠️ Klarna error: " + JSON.stringify(data), "bot");
       }
@@ -301,13 +239,6 @@
   }
 
   input.addEventListener("keypress", e => { if (e.key === "Enter") sendMessage(); });
-
-  // ✅ iOS keyboard fix: scroll input into view
-  input.addEventListener("focus", () => {
-    setTimeout(() => {
-      input.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }, 300);
-  });
 </script>
 </body>
 </html>
