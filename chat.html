@@ -56,29 +56,54 @@
       background: #ffb347; cursor: pointer;
       color: #000; font-weight: bold; font-size: 15px;
     }
-    /* Calendar slot picker */
+
+    /* Calendar styles */
     .calendar {
-      background: #fff; border: 1px solid #ddd;
-      border-radius: 8px; padding: 10px;
-      margin-top: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-      max-width: 300px;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 10px;
+      margin-top: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      max-width: 330px;
     }
-    .calendar h4 { margin: 5px 0; }
-    .slot-btn {
-      display: inline-block; margin: 4px;
+    .calendar header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 5px; background: none; box-shadow: none;
+      color: #333; font-size: 14px;
+    }
+    .calendar table {
+      width: 100%; border-collapse: collapse; text-align: center;
+    }
+    .calendar th {
+      font-size: 12px; padding: 4px;
+    }
+    .calendar td {
+      width: 14%; height: 40px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .calendar td:hover { background: #eaf3ff; }
+    .calendar .has-slot { background: #d0eaff; font-weight: bold; }
+    .calendar .today { border: 2px solid #007bff; }
+    .times {
+      margin-top: 10px;
+      display: flex; flex-wrap: wrap;
+      gap: 5px;
+    }
+    .time-btn {
       padding: 6px 10px; border-radius: 6px;
       border: 1px solid #007bff; background: #eaf3ff;
       cursor: pointer; font-size: 14px;
     }
-    .slot-btn:hover { background: #007bff; color: #fff; }
+    .time-btn:hover { background: #007bff; color: #fff; }
   </style>
 </head>
 <body>
   <header>💈 Barbershop Assistant</header>
   <div id="chat">
     <div class="msg bot">
-      👋 Welcome to our Barbershop!  
-      Type <b>"book"</b> to see available slots.
+      👋 Welcome! Type <b>"book"</b> to see available slots.
     </div>
   </div>
 
@@ -92,17 +117,12 @@
   const input = document.getElementById("userInput");
   const conversation = [];
 
-  function scrollToBottom() {
-    chat.scrollTop = chat.scrollHeight;
-  }
-
+  function scrollToBottom() { chat.scrollTop = chat.scrollHeight; }
   function appendMessage(text, sender="bot") {
     const div = document.createElement("div");
     div.className = "msg " + sender;
     div.textContent = text;
-    chat.appendChild(div);
-    scrollToBottom();
-
+    chat.appendChild(div); scrollToBottom();
     if (sender === "bot") conversation.push({ role: "assistant", content: text });
     if (sender === "user") conversation.push({ role: "user", content: text });
     if (conversation.length > 16) conversation.shift();
@@ -120,32 +140,22 @@
     }
 
     const loading = document.createElement("span");
-    loading.className = "loading";
-    loading.innerText = "⏳...";
-    chat.appendChild(loading);
-    scrollToBottom();
+    loading.className = "loading"; loading.innerText = "⏳...";
+    chat.appendChild(loading); scrollToBottom();
 
     try {
       const res = await fetch("/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text, history: conversation })
       });
       const data = await res.json();
       loading.remove();
       appendMessage(data.reply, "bot");
-
       if (data.status === "reserved") {
-        const payBtn = document.createElement("button");
-        payBtn.innerText = "💳 Pay with Klarna";
-        payBtn.className = "pay-btn";
-        payBtn.onclick = () => payWithKlarna("Haircut", "Customer", 200, data.booking_id);
-        chat.appendChild(payBtn);
-        scrollToBottom();
+        addPayButton(data.booking_id);
       }
     } catch (err) {
-      loading.remove();
-      appendMessage("⚠️ Error: " + err.message, "bot");
+      loading.remove(); appendMessage("⚠️ Error: " + err.message, "bot");
     }
   }
 
@@ -153,81 +163,112 @@
     try {
       const res = await fetch("/api/slots");
       const slots = await res.json();
-
-      const cal = document.createElement("div");
-      cal.className = "calendar";
-
-      if (Object.keys(slots).length === 0) {
-        cal.innerHTML = "<p>No slots available right now 😢</p>";
-      } else {
-        cal.innerHTML = "<h4>Available Slots</h4>";
-        for (const [date, times] of Object.entries(slots)) {
-          const dateHeader = document.createElement("div");
-          dateHeader.innerHTML = `<strong>${date}</strong>`;
-          cal.appendChild(dateHeader);
-
-          times.forEach(time => {
-            const btn = document.createElement("button");
-            btn.className = "slot-btn";
-            btn.textContent = time;
-            btn.onclick = () => {
-              appendMessage(`I want ${date} at ${time}`, "user");
-              sendBooking(date, time);
-            };
-            cal.appendChild(btn);
-          });
-        }
-      }
-      chat.appendChild(cal);
-      scrollToBottom();
+      const cal = buildCalendar(slots);
+      chat.appendChild(cal); scrollToBottom();
     } catch (err) {
       appendMessage("⚠️ Error loading slots", "bot");
     }
   }
 
+  function buildCalendar(slots) {
+    const cal = document.createElement("div");
+    cal.className = "calendar";
+    const today = new Date();
+
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    const firstDay = monthStart.getDay();
+    const daysInMonth = monthEnd.getDate();
+
+    const header = document.createElement("header");
+    header.innerHTML = `<span>${today.toLocaleString("default", { month: "long" })} ${today.getFullYear()}</span>`;
+    cal.appendChild(header);
+
+    const table = document.createElement("table");
+    const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+    const thead = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    days.forEach(d => {
+      const th = document.createElement("th");
+      th.textContent = d;
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow); table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    let row = document.createElement("tr");
+    for (let i=0;i<firstDay;i++) row.appendChild(document.createElement("td"));
+
+    for (let d=1; d<=daysInMonth; d++) {
+      const dateStr = today.getFullYear()+"-"+String(today.getMonth()+1).padStart(2,"0")+"-"+String(d).padStart(2,"0");
+      const td = document.createElement("td");
+      td.textContent = d;
+
+      if (slots[dateStr]) {
+        td.classList.add("has-slot");
+        td.onclick = () => showTimes(dateStr, slots[dateStr], cal);
+      }
+      if (d === today.getDate()) td.classList.add("today");
+
+      row.appendChild(td);
+      if ((firstDay + d) % 7 === 0 || d === daysInMonth) {
+        tbody.appendChild(row);
+        row = document.createElement("tr");
+      }
+    }
+    table.appendChild(tbody); cal.appendChild(table);
+    return cal;
+  }
+
+  function showTimes(date, times, cal) {
+    let timeBox = cal.querySelector(".times");
+    if (timeBox) timeBox.remove();
+    timeBox = document.createElement("div");
+    timeBox.className = "times";
+    times.forEach(t => {
+      const btn = document.createElement("button");
+      btn.className = "time-btn"; btn.textContent = t;
+      btn.onclick = () => sendBooking(date, t);
+      timeBox.appendChild(btn);
+    });
+    cal.appendChild(timeBox);
+  }
+
   async function sendBooking(date, time) {
+    appendMessage(`I want ${date} at ${time}`, "user");
     const loading = document.createElement("span");
-    loading.className = "loading";
-    loading.innerText = "⏳...";
-    chat.appendChild(loading);
-    scrollToBottom();
+    loading.className = "loading"; loading.innerText = "⏳...";
+    chat.appendChild(loading); scrollToBottom();
 
     try {
       const res = await fetch("/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: `I want ${date} at ${time}`,
-          history: conversation
-        })
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: `I want ${date} at ${time}`, history: conversation })
       });
       const data = await res.json();
       loading.remove();
       appendMessage(data.reply, "bot");
-
-      if (data.status === "reserved") {
-        const payBtn = document.createElement("button");
-        payBtn.innerText = "💳 Pay with Klarna";
-        payBtn.className = "pay-btn";
-        payBtn.onclick = () => payWithKlarna("Haircut", "Customer", 200, data.booking_id);
-        chat.appendChild(payBtn);
-        scrollToBottom();
-      }
+      if (data.status === "reserved") addPayButton(data.booking_id);
     } catch (err) {
-      loading.remove();
-      appendMessage("⚠️ Error: " + err.message, "bot");
+      loading.remove(); appendMessage("⚠️ Error: " + err.message, "bot");
     }
+  }
+
+  function addPayButton(bookingId) {
+    const payBtn = document.createElement("button");
+    payBtn.innerText = "💳 Pay with Klarna";
+    payBtn.className = "pay-btn";
+    payBtn.onclick = () => payWithKlarna("Haircut", "Customer", 200, bookingId);
+    chat.appendChild(payBtn); scrollToBottom();
   }
 
   async function payWithKlarna(service, customer, amount, bookingId) {
     try {
       const res = await fetch("/pay/klarna", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ service, customer_name: customer, amount, booking_id: bookingId })
       });
       const data = await res.json();
-
       if (data.order_id) {
         window.location.href = `/checkout?klarna_order_id=${data.order_id}`;
       } else {
