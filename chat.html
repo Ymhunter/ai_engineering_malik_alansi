@@ -154,11 +154,23 @@
     input.value = "";
     suggestions.style.display = "none"; // hide after any message
 
-    if (/book|reserve|appointment/i.test(text)) {
-      showCalendar();
-      return;
+    // 🔎 Step 1: check intent in ANY language
+    try {
+      const intentRes = await fetch("/intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text })
+      });
+      const intentData = await intentRes.json();
+      if (intentData.intent === "book") {
+        showCalendar();
+        return;
+      }
+    } catch (err) {
+      console.warn("Intent check failed", err);
     }
 
+    // 🔎 Step 2: if not booking, send to /chat
     const loading = document.createElement("span");
     loading.className = "loading"; loading.innerText = "⏳...";
     chat.appendChild(loading); scrollToBottom();

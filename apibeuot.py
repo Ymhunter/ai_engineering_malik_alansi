@@ -186,6 +186,29 @@ Your task:
     except Exception as e:
         return {"status": "error", "reply": f"⚠️ Error: {str(e)}"}
 
+
+@app.post("/intent")
+async def detect_intent(payload: dict = Body(...)):
+    """Detect if message is about booking in ANY language."""
+    message = payload.get("message", "")
+    if not message:
+        return {"intent": "unknown"}
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are an intent classifier. Decide if the user wants to BOOK an appointment (haircut). The message may be in ANY language. Answer only 'book' or 'other'."},
+                {"role": "user", "content": message}
+            ]
+        )
+        intent = response.choices[0].message.content.strip().lower()
+        if "book" in intent:
+            return {"intent": "book"}
+        return {"intent": "other"}
+    except Exception as e:
+        return {"intent": "error", "detail": str(e)}
+
 # ------------------------------
 # Klarna Payment
 # ------------------------------
