@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 import requests
 from openai import OpenAI
 from sqlalchemy.orm import Session
-
+from fastapi import FastAPI, HTTPException, Request, Depends, Query, Body
 from database import SessionLocal, Booking, Slot
 
 # ------------------------------
