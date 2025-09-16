@@ -102,21 +102,21 @@
     </table>
     <p id="lastUpdated"></p>
   </section>
+
 <script>
   const slotsTable = document.querySelector("#slotsTable tbody");
   const bookingsTable = document.querySelector("#bookingsTable tbody");
   const lastUpdated = document.getElementById("lastUpdated");
   let pollInterval = null;
 
-  // 🔹 Render slots table
+  // 🔹 Render slots
   function renderSlots(slots) {
     slotsTable.innerHTML = "";
     const sortedDates = Object.keys(slots).sort();
     sortedDates.forEach(date => {
       const times = slots[date].sort();
       times.forEach(time => {
-        // ✅ Ensure time is always HH:MM (trim seconds if browser gives HH:MM:SS)
-        if (time.length === 8) time = time.slice(0, 5);
+        if (time.length === 8) time = time.slice(0, 5); // ✅ trim seconds
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${date}</td>
@@ -128,12 +128,12 @@
     });
   }
 
-  // 🔹 Render bookings table
+  // 🔹 Render bookings
   function renderBookings(bookings) {
     bookingsTable.innerHTML = "";
     bookings.forEach(b => {
       let time = b.time;
-      if (time.length === 8) time = time.slice(0, 5); // ✅ fix format
+      if (time.length === 8) time = time.slice(0, 5);
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${b.customer_name}</td>
@@ -150,12 +150,12 @@
     });
   }
 
-  // 🔹 Add slot form handler
+  // 🔹 Add slot
   document.getElementById("slotForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const date = document.getElementById("slotDate").value; // already YYYY-MM-DD
-    let time = document.getElementById("slotTime").value;   // can be HH:MM or HH:MM:SS
-    if (time.length === 8) time = time.slice(0, 5);         // ✅ trim to HH:MM
+    const date = document.getElementById("slotDate").value;
+    let time = document.getElementById("slotTime").value;
+    if (time.length === 8) time = time.slice(0, 5); // ✅ trim seconds
 
     try {
       const res = await fetch("/api/slots", {
@@ -176,7 +176,7 @@
 
   // 🔹 Slot + Booking actions
   async function deleteSlot(date, time) {
-    if (time.length === 8) time = time.slice(0, 5); // ✅ normalize
+    if (time.length === 8) time = time.slice(0, 5);
     await fetch(`/api/slots?date=${date}&time=${time}`, { method: "DELETE" });
   }
   async function cancelBooking(id) {
@@ -206,7 +206,7 @@
     }
   }
 
-  // 🔹 WebSocket connection for live updates
+  // 🔹 WebSocket connection
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${protocol}://${window.location.host}/ws/dashboard`);
 
@@ -220,20 +220,19 @@
   ws.onopen = () => {
     console.log("✅ Connected to live updates");
     if (pollInterval) {
-      clearInterval(pollInterval); // stop fallback polling if WS is alive
+      clearInterval(pollInterval);
       pollInterval = null;
     }
   };
 
   ws.onclose = () => {
-    console.log("❌ Disconnected from live updates");
-    // fallback: poll every 15s if WS dies
+    console.log("❌ Disconnected from live updates, switching to polling");
     if (!pollInterval) {
       pollInterval = setInterval(initialLoad, 15000);
     }
   };
 
-  // 🔹 Do an initial load immediately
+  // 🔹 Load immediately
   initialLoad();
 </script>
 </body>

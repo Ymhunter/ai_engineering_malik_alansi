@@ -3,18 +3,18 @@ import uuid
 import json
 import re
 import asyncio
-from datetime import datetime, timedelta, date, time
+from datetime import datetime, timedelta, date as DateType, time as TimeType
 
 from fastapi import (
-    FastAPI, HTTPException, Request, Depends,
-    Query, Body, WebSocket, WebSocketDisconnect
+    FastAPI, HTTPException, Depends,
+    Body, WebSocket, WebSocketDisconnect
 )
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import requests
 from openai import OpenAI
-from sqlalchemy import create_engine, Column, String, Integer, Boolean, Date, Time, DateTime, inspect, text
+from sqlalchemy import create_engine, Column, String, Integer, Boolean, Date, Time, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
@@ -55,9 +55,9 @@ class Booking(Base):
     id = Column(String, primary_key=True, index=True)   # UUID
     customer_name = Column(String, index=True)
     service = Column(String)
-    date = Column(Date, index=True)    # stored as real date
-    time = Column(Time)                # stored as real time
-    status = Column(String, default="pending")  # pending / paid / cancelled
+    date = Column(Date, index=True)
+    time = Column(Time)
+    status = Column(String, default="pending")
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -69,7 +69,7 @@ class Slot(Base):
     time = Column(Time)
     available = Column(Boolean, default=True)
 
-# Create tables
+
 Base.metadata.create_all(bind=engine)
 
 # ------------------------------
@@ -89,6 +89,7 @@ class ChatMessage(BaseModel):
     message: str
     history: list | None = None
 
+
 class KlarnaPaymentRequest(BaseModel):
     amount: float
     service: str
@@ -96,38 +97,128 @@ class KlarnaPaymentRequest(BaseModel):
     booking_id: str | None = None
 
 # ------------------------------
-# Helpers
+# Helpers: coercion for legacy values
+# ------------------------------
+def to_date(v) -> DateType | None:
+    if isinstance(v, DateType):
+        return v
+    if isinstance(v, str) and v:
+        try:
+            return datetime.strptime(v, "%Y-%m-%d").date()
+        except ValueError:
+            try:
+                return datetime.fromisoformat(v).date()
+            except Exception:
+                return None
+    return None
+
+
+def to_time(v) -> TimeType | None:
+    if isinstance(v, TimeType):
+        return v
+    if isinstance(v, str) and v:
+        for fmt in ("%H:%M", "%H:%M:%S"):
+            try:
+                return datetime.strptime(v, fmt).time()
+            except ValueError:
+                continue
+    return None
+
+
+def to_datetime_utc(v) -> datetime | None:
+    if isinstance(v, datetime):
+        return v
+    if isinstance(v, str) and v:
+        try:
+            return datetime.fromisoformat(v.replace("Z", "+00:00")).replace(tzinfo=None)
+        except Exception:
+            pass
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+            try:
+                return datetime.strptime(v, fmt)
+            except ValueError:
+                continue
+    return None
+
+# ------------------------------
+# Cleanup helpers
 # ------------------------------
 def clean_expired_slots(db: Session):
-    """Delete slots in the past (UTC)."""
     now = datetime.utcnow()
-    for s in db.query(Slot).all():
-        slot_dt = datetime.combine(s.date, s.time)
-        if slot_dt <= now:
+    slots = db.query(Slot).all()
+    removed = False
+    for s in slots:
+        d = to_date(s.date)
+        t = to_time(s.time)
+        if not d or not t:
             db.delete(s)
-    db.commit()
+            removed = True
+            continue
+        if datetime.combine(d, t) <= now:
+            db.delete(s)
+            removed = True
+    if removed:
+        db.commit()
+
 
 def clean_stale_bookings(db: Session):
-    """Delete pending bookings older than 10 minutes and free their slots."""
     now = datetime.utcnow()
     stale = db.query(Booking).filter_by(status="pending").all()
+    changed = False
     for b in stale:
-        created = b.created_at or (now - timedelta(hours=1))
+        created = to_datetime_utc(b.created_at) or (now - timedelta(hours=1))
         if created + timedelta(minutes=10) < now:
-            slot = db.query(Slot).filter_by(date=b.date, time=b.time).first()
-            if slot:
-                slot.available = True
+            d = to_date(b.date)
+            t = to_time(b.time)
+            if d and t:
+                slot = db.query(Slot).filter_by(date=d, time=t).first()
+                if slot:
+                    slot.available = True
             db.delete(b)
+            changed = True
+    if changed:
+        db.commit()
+
+
+def get_slots_sync(db: Session):
+    clean_expired_slots(db)
+    clean_stale_bookings(db)
+    slots = db.query(Slot).filter_by(available=True).all()
+    result: dict[str, list[str]] = {}
+    for s in slots:
+        d = to_date(s.date)
+        t = to_time(s.time)
+        if not d or not t:
+            db.delete(s)
+            continue
+        result.setdefault(d.isoformat(), []).append(t.strftime("%H:%M"))
     db.commit()
+    return result
 
-def to_date(d: str) -> date:
-    return datetime.strptime(d, "%Y-%m-%d").date()
 
-def to_time(t: str) -> time:
-    return datetime.strptime(t, "%H:%M").time()
+def get_bookings_sync(db: Session):
+    clean_stale_bookings(db)
+    bookings = db.query(Booking).all()
+    result = []
+    for b in bookings:
+        d = to_date(b.date)
+        t = to_time(b.time)
+        if not d or not t:
+            db.delete(b)
+            continue
+        result.append({
+            "id": b.id,
+            "customer_name": b.customer_name,
+            "service": b.service,
+            "date": d.isoformat(),
+            "time": t.strftime("%H:%M"),
+            "status": b.status
+        })
+    db.commit()
+    return result
 
 # ------------------------------
-# Pages
+# FastAPI app + pages
 # ------------------------------
 app = FastAPI(title="Barbershop Booking AI Agent")
 
@@ -140,7 +231,7 @@ async def dashboard():
     return FileResponse("dashboard.html")
 
 # ------------------------------
-# WebSockets: real-time dashboard sync
+# WebSockets for live updates
 # ------------------------------
 active_connections: list[WebSocket] = []
 
@@ -150,14 +241,13 @@ async def dashboard_ws(websocket: WebSocket):
     active_connections.append(websocket)
     try:
         while True:
-            await websocket.receive_text()  # keep alive
+            await websocket.receive_text()
     except WebSocketDisconnect:
         active_connections.remove(websocket)
 
+
 async def broadcast_update(db: Session):
-    slots = get_slots_sync(db)
-    bookings = get_bookings_sync(db)
-    payload = {"slots": slots, "bookings": bookings}
+    payload = {"slots": get_slots_sync(db), "bookings": get_bookings_sync(db)}
     to_remove = []
     for ws in active_connections:
         try:
@@ -167,33 +257,9 @@ async def broadcast_update(db: Session):
     for ws in to_remove:
         active_connections.remove(ws)
 
+
 def trigger_broadcast(db: Session):
     asyncio.create_task(broadcast_update(db))
-
-def get_slots_sync(db: Session):
-    clean_expired_slots(db)
-    clean_stale_bookings(db)
-    slots = db.query(Slot).filter_by(available=True).all()
-    result = {}
-    for s in slots:
-        d = s.date.isoformat()
-        result.setdefault(d, []).append(s.time.strftime("%H:%M"))
-    return result
-
-def get_bookings_sync(db: Session):
-    clean_stale_bookings(db)
-    bookings = db.query(Booking).all()
-    result = []
-    for b in bookings:
-        result.append({
-            "id": b.id,
-            "customer_name": b.customer_name,
-            "service": b.service,
-            "date": b.date.isoformat(),
-            "time": b.time.strftime("%H:%M"),
-            "status": b.status
-        })
-    return result
 
 # ------------------------------
 # Intent detection
@@ -219,7 +285,7 @@ async def detect_intent(payload: dict = Body(...)):
         return {"intent": "error", "detail": str(e)}
 
 # ------------------------------
-# Chat endpoint (AI assistant)
+# Chat endpoint
 # ------------------------------
 @app.post("/chat")
 async def chat_with_agent(user_input: ChatMessage, db: Session = Depends(get_db)):
@@ -227,7 +293,7 @@ async def chat_with_agent(user_input: ChatMessage, db: Session = Depends(get_db)
         clean_expired_slots(db)
         clean_stale_bookings(db)
         slots = db.query(Slot).filter_by(available=True).all()
-        future_slots = [f"{s.date.isoformat()} {s.time.strftime('%H:%M')}" for s in slots]
+        future_slots = [f"{to_date(s.date).isoformat()} {to_time(s.time).strftime('%H:%M')}" for s in slots if to_date(s.date) and to_time(s.time)]
         slot_info = ", ".join(future_slots) if future_slots else "No slots available"
 
         messages = [
@@ -256,11 +322,12 @@ Your task:
         booking_match = re.search(r"\{.*?\}", reply, re.DOTALL)
         if booking_match:
             booking_data = json.loads(booking_match.group())
-            slot_exists = db.query(Slot).filter_by(
-                date=to_date(booking_data["date"]),
-                time=to_time(booking_data["time"]),
-                available=True
-            ).first()
+            d = to_date(booking_data["date"])
+            t = to_time(booking_data["time"])
+            if not d or not t:
+                return {"status": "ok", "reply": "❌ Invalid date/time format."}
+
+            slot_exists = db.query(Slot).filter_by(date=d, time=t, available=True).first()
             if not slot_exists:
                 return {"status": "unavailable", "reply": "❌ Sorry, that slot is not available."}
 
@@ -269,8 +336,8 @@ Your task:
                 id=booking_id,
                 customer_name=booking_data["customer_name"],
                 service=booking_data["service"],
-                date=to_date(booking_data["date"]),
-                time=to_time(booking_data["time"]),
+                date=d,
+                time=t,
                 status="pending",
                 created_at=datetime.utcnow()
             )
@@ -299,17 +366,27 @@ Your task:
 async def get_slots(db: Session = Depends(get_db)):
     return JSONResponse(get_slots_sync(db), headers={"Cache-Control": "no-store"})
 
+
 @app.post("/api/slots")
 async def add_slot(slot: dict, db: Session = Depends(get_db)):
-    new_slot = Slot(date=to_date(slot["date"]), time=to_time(slot["time"]), available=True)
+    d = to_date(slot["date"])
+    t = to_time(slot["time"])
+    if not d or not t:
+        raise HTTPException(status_code=400, detail="Invalid date/time")
+    new_slot = Slot(date=d, time=t, available=True)
     db.add(new_slot)
     db.commit()
     trigger_broadcast(db)
     return {"status": "ok"}
 
+
 @app.delete("/api/slots")
 async def delete_slot(date: str, time: str, db: Session = Depends(get_db)):
-    slot = db.query(Slot).filter_by(date=to_date(date), time=to_time(time)).first()
+    d = to_date(date)
+    t = to_time(time)
+    if not d or not t:
+        raise HTTPException(status_code=400, detail="Invalid date/time")
+    slot = db.query(Slot).filter_by(date=d, time=t).first()
     if slot:
         db.delete(slot)
         db.commit()
@@ -323,6 +400,7 @@ async def delete_slot(date: str, time: str, db: Session = Depends(get_db)):
 async def get_bookings(db: Session = Depends(get_db)):
     return JSONResponse(get_bookings_sync(db), headers={"Cache-Control": "no-store"})
 
+
 @app.post("/api/bookings/{booking_id}/cancel")
 async def cancel_booking(booking_id: str, db: Session = Depends(get_db)):
     booking = db.query(Booking).filter_by(id=booking_id).first()
@@ -335,6 +413,7 @@ async def cancel_booking(booking_id: str, db: Session = Depends(get_db)):
     db.commit()
     trigger_broadcast(db)
     return {"status": "cancelled", "booking_id": booking_id}
+
 
 @app.post("/api/bookings/{booking_id}/paid")
 async def mark_booking_paid(booking_id: str, db: Session = Depends(get_db)):
