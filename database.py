@@ -51,25 +51,24 @@ Base.metadata.create_all(bind=engine)
 # ------------------------------
 # Helpers for safe parsing
 # ------------------------------
-def to_date(v) -> DateType | None:
+def to_date(v):
     if isinstance(v, DateType):
         return v
-    if isinstance(v, str) and v:
+    if isinstance(v, str):
         try:
-            return datetime.strptime(v, "%Y-%m-%d").date()
-        except ValueError:
+            return datetime.fromisoformat(v).date()
+        except Exception:
             return None
     return None
 
-def to_time(v) -> TimeType | None:
+def to_time(v):
     if isinstance(v, TimeType):
         return v
-    if isinstance(v, str) and v:
-        for fmt in ("%H:%M", "%H:%M:%S"):
-            try:
-                return datetime.strptime(v, fmt).time()
-            except ValueError:
-                continue
+    if isinstance(v, str):
+        try:
+            return datetime.fromisoformat(f"2000-01-01T{v}").time()
+        except Exception:
+            return None
     return None
 
 # ------------------------------

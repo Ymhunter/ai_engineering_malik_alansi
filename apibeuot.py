@@ -249,11 +249,16 @@ async def get_slots(db: Session = Depends(get_db)):
 
 @app.post("/api/slots")
 async def add_slot(slot: dict, db: Session = Depends(get_db)):
-    new_slot = Slot(date=to_date(slot["date"]), time=to_time(slot["time"]), available=True)
+    d = to_date(slot.get("date"))
+    t = to_time(slot.get("time"))
+    if not d or not t:
+        raise HTTPException(status_code=400, detail=f"Invalid date/time: {slot}")
+    new_slot = Slot(date=d, time=t, available=True)
     db.add(new_slot)
     db.commit()
     trigger_broadcast(db)
     return {"status": "ok"}
+
 
 @app.delete("/api/slots")
 async def delete_slot(date: str, time: str, db: Session = Depends(get_db)):
