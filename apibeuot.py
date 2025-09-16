@@ -3,7 +3,10 @@ import uuid
 import json
 import re
 from datetime import datetime, timedelta
-from fastapi import FastAPI, HTTPException, Request, Depends, Query, Body, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI, HTTPException, Request, Depends,
+    Query, Body, WebSocket, WebSocketDisconnect
+)
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -112,11 +115,11 @@ async def dashboard_ws(websocket: WebSocket):
     active_connections.append(websocket)
     try:
         while True:
-            await websocket.receive_text()  # keep connection alive
+            await websocket.receive_text()  # keep alive
     except WebSocketDisconnect:
         active_connections.remove(websocket)
 
-def broadcast_update(db: Session):
+async def broadcast_update(db: Session):
     """Send current slots + bookings to all connected dashboards."""
     slots = get_slots_sync(db)
     bookings = get_bookings_sync(db)
@@ -124,7 +127,7 @@ def broadcast_update(db: Session):
     to_remove = []
     for ws in active_connections:
         try:
-            ws.send_json(payload)
+            await ws.send_json(payload)
         except Exception:
             to_remove.append(ws)
     for ws in to_remove:
@@ -235,8 +238,7 @@ Your task:
             slot_exists.available = False
             db.commit()
 
-            # Broadcast update
-            broadcast_update(db)
+            await broadcast_update(db)
 
             return {
                 "status": "reserved",
@@ -260,7 +262,7 @@ async def add_slot(slot: dict, db: Session = Depends(get_db)):
     new_slot = Slot(date=slot["date"], time=slot["time"], available=True)
     db.add(new_slot)
     db.commit()
-    broadcast_update(db)
+    await broadcast_update(db)
     return {"status": "ok"}
 
 @app.delete("/api/slots")
@@ -269,7 +271,7 @@ async def delete_slot(date: str, time: str, db: Session = Depends(get_db)):
     if slot:
         db.delete(slot)
         db.commit()
-        broadcast_update(db)
+        await broadcast_update(db)
     return {"status": "deleted"}
 
 # ------------------------------
@@ -289,5 +291,15 @@ async def cancel_booking(booking_id: str, db: Session = Depends(get_db)):
     if slot:
         slot.available = True
     db.commit()
-    broadcast_update(db)
+    await broadcast_update(db)
     return {"status": "cancelled", "booking_id": booking_id}
+
+@app.post("/api/bookings/{booking_id}/paid")
+async def mark_booking_paid(booking_id: str, db: Session = Depends(get_db)):
+    booking = db.query(Booking).filter_by(id=booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    booking.status = "paid"
+    db.commit()
+    await broadcast_update(db)
+    return {"status": "paid", "booking_id": booking_id}
