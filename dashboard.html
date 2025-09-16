@@ -107,11 +107,15 @@
   const slotsTable = document.querySelector("#slotsTable tbody");
   const bookingsTable = document.querySelector("#bookingsTable tbody");
   const lastUpdated = document.getElementById("lastUpdated");
+  let pollInterval = null;
 
   // Render slots
   function renderSlots(slots) {
     slotsTable.innerHTML = "";
-    for (const [date, times] of Object.entries(slots)) {
+    // sort dates
+    const sortedDates = Object.keys(slots).sort();
+    sortedDates.forEach(date => {
+      const times = slots[date].sort(); // sort times
       times.forEach(time => {
         const tr = document.createElement("tr");
         tr.innerHTML = `
@@ -121,7 +125,7 @@
         `;
         slotsTable.appendChild(tr);
       });
-    }
+    });
   }
 
   // Render bookings
@@ -172,6 +176,21 @@
     lastUpdated.innerText = "Last updated: " + new Date().toLocaleTimeString();
   }
 
+  // Initial load (also used for polling fallback)
+  async function initialLoad() {
+    try {
+      const slotsRes = await fetch("/api/slots?ts=" + Date.now(), { cache: "no-store" });
+      renderSlots(await slotsRes.json());
+
+      const bookingsRes = await fetch("/api/bookings?ts=" + Date.now(), { cache: "no-store" });
+      renderBookings(await bookingsRes.json());
+
+      updateTimestamp();
+    } catch (err) {
+      console.error("Failed to load data", err);
+    }
+  }
+
   // WebSocket connection for live updates
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${protocol}://${window.location.host}/ws/dashboard`);
@@ -183,19 +202,23 @@
     updateTimestamp();
   };
 
-  ws.onopen = () => console.log("✅ Connected to live updates");
-  ws.onclose = () => console.log("❌ Disconnected from live updates");
+  ws.onopen = () => {
+    console.log("✅ Connected to live updates");
+    if (pollInterval) {
+      clearInterval(pollInterval); // stop polling once WS is back
+      pollInterval = null;
+    }
+  };
 
-  // Initial load (fallback in case websocket is slow to connect)
-  async function initialLoad() {
-    const slotsRes = await fetch("/api/slots?ts=" + Date.now(), { cache: "no-store" });
-    renderSlots(await slotsRes.json());
+  ws.onclose = () => {
+    console.log("❌ Disconnected from live updates");
+    // fallback: poll every 15s
+    if (!pollInterval) {
+      pollInterval = setInterval(initialLoad, 15000);
+    }
+  };
 
-    const bookingsRes = await fetch("/api/bookings?ts=" + Date.now(), { cache: "no-store" });
-    renderBookings(await bookingsRes.json());
-
-    updateTimestamp();
-  }
+  // Do an initial load immediately
   initialLoad();
 </script>
 </body>
