@@ -50,8 +50,7 @@ class ChatMessage(BaseModel):
 # Helpers
 # ------------------------------
 def clean_expired_slots(db: Session):
-    """Delete slots in the past."""
-    now = datetime.now()  # ✅ local time
+    now = datetime.now()
     for s in db.query(Slot).all():
         try:
             slot_dt = datetime.combine(to_date(s.date), to_time(s.time))
@@ -62,7 +61,6 @@ def clean_expired_slots(db: Session):
     db.commit()
 
 def clean_stale_bookings(db: Session):
-    """Delete pending bookings older than 10 minutes and free their slots."""
     now = datetime.utcnow()
     stale = db.query(Booking).filter_by(status="pending").all()
     for b in stale:
@@ -129,7 +127,7 @@ async def dashboard_ws(websocket: WebSocket):
     active_connections.append(websocket)
     try:
         while True:
-            await websocket.receive_text()  # keep alive
+            await websocket.receive_text()
     except WebSocketDisconnect:
         active_connections.remove(websocket)
 
@@ -211,7 +209,9 @@ Your task:
         if booking_match:
             booking_data = json.loads(booking_match.group())
             slot_exists = db.query(Slot).filter_by(
-                date=to_date(booking_data["date"]), time=to_time(booking_data["time"]), available=True
+                date=to_date(booking_data["date"]),
+                time=to_time(booking_data["time"]),
+                available=True
             ).first()
             if not slot_exists:
                 return {"status": "unavailable", "reply": "❌ Sorry, that slot is not available."}
@@ -259,15 +259,19 @@ async def add_slot(slot: dict, db: Session = Depends(get_db)):
     trigger_broadcast(db)
     return {"status": "ok"}
 
-
 @app.delete("/api/slots")
 async def delete_slot(date: str, time: str, db: Session = Depends(get_db)):
-    slot = db.query(Slot).filter_by(date=to_date(date), time=to_time(time)).first()
+    d = to_date(date)
+    t = to_time(time)
+    if not d or not t:
+        raise HTTPException(status_code=400, detail=f"Invalid date/time: {date} {time}")
+    slot = db.query(Slot).filter_by(date=d, time=t).first()
     if slot:
         db.delete(slot)
         db.commit()
         trigger_broadcast(db)
-    return {"status": "deleted"}
+        return {"status": "deleted"}
+    raise HTTPException(status_code=404, detail="Slot not found")
 
 # ------------------------------
 # Bookings API
