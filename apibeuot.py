@@ -3,19 +3,15 @@ import uuid
 import json
 import re
 import asyncio
-from datetime import datetime, timedelta, date as DateType, time as TimeType
-
-from fastapi import (
-    FastAPI, HTTPException, Depends,
-    Body, WebSocket, WebSocketDisconnect
-)
+from datetime import datetime, timedelta
+from fastapi import FastAPI, HTTPException, Depends, Body, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from openai import OpenAI
-from sqlalchemy import create_engine, Column, String, Integer, Boolean, Date, Time, DateTime
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session
+
+from database import SessionLocal, Booking, Slot, to_date, to_time
 
 # ------------------------------
 # Load environment
@@ -23,49 +19,15 @@ from sqlalchemy.orm import sessionmaker, Session
 load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-DATABASE_URL = os.getenv("DATABASE_URL",)
-
 if not OPENAI_API_KEY:
     raise RuntimeError("❌ Missing OPENAI_API_KEY in environment")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 # ------------------------------
-# Database setup
+# FastAPI app
 # ------------------------------
-if DATABASE_URL.startswith("sqlite"):
-    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-else:
-    engine = create_engine(DATABASE_URL)
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-
-# ------------------------------
-# Models
-# ------------------------------
-class Booking(Base):
-    __tablename__ = "bookings"
-
-    id = Column(String, primary_key=True, index=True)   # UUID
-    customer_name = Column(String, index=True)
-    service = Column(String)
-    date = Column(Date, index=True)
-    time = Column(Time)
-    status = Column(String, default="pending")
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-
-class Slot(Base):
-    __tablename__ = "slots"
-
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    date = Column(Date, index=True)
-    time = Column(Time)
-    available = Column(Boolean, default=True)
-
-
-Base.metadata.create_all(bind=engine)
+app = FastAPI(title="Barbershop Booking AI Agent")
 
 # ------------------------------
 # DB dependency
@@ -87,77 +49,34 @@ class ChatMessage(BaseModel):
 # ------------------------------
 # Helpers
 # ------------------------------
-def to_date(v) -> DateType | None:
-    if isinstance(v, DateType):
-        return v
-    if isinstance(v, str):
-        try:
-            return datetime.strptime(v, "%Y-%m-%d").date()
-        except Exception:
-            try:
-                return datetime.fromisoformat(v).date()
-            except Exception:
-                return None
-    return None
-
-
-def to_time(v) -> TimeType | None:
-    if isinstance(v, TimeType):
-        return v
-    if isinstance(v, str):
-        for fmt in ("%H:%M", "%H:%M:%S"):
-            try:
-                return datetime.strptime(v, fmt).time()
-            except Exception:
-                continue
-    return None
-
-
-def to_datetime(v) -> datetime | None:
-    if isinstance(v, datetime):
-        return v
-    if isinstance(v, str):
-        try:
-            return datetime.fromisoformat(v.replace("Z", "+00:00"))
-        except Exception:
-            return None
-    return None
-
-# ------------------------------
-# Cleanup
-# ------------------------------
 def clean_expired_slots(db: Session):
-    """Delete slots in the past (local time)."""
-    now = datetime.now()  # ✅ local, not UTC
+    """Delete slots in the past."""
+    now = datetime.now()  # ✅ local time
     for s in db.query(Slot).all():
-        d = to_date(s.date)
-        t = to_time(s.time)
-        if not d or not t:
+        try:
+            slot_dt = datetime.combine(to_date(s.date), to_time(s.time))
+            if slot_dt <= now:
+                db.delete(s)
+        except Exception:
             continue
-        if datetime.combine(d, t) <= now:
-            db.delete(s)
     db.commit()
 
-
 def clean_stale_bookings(db: Session):
-    """Delete pending bookings older than 10 minutes and free slots."""
-    now = datetime.now()
+    """Delete pending bookings older than 10 minutes and free their slots."""
+    now = datetime.utcnow()
     stale = db.query(Booking).filter_by(status="pending").all()
     for b in stale:
-        created = to_datetime(b.created_at) or now - timedelta(hours=1)
+        try:
+            created = datetime.fromisoformat(b.created_at)
+        except Exception:
+            created = now - timedelta(hours=1)
         if created + timedelta(minutes=10) < now:
-            d = to_date(b.date)
-            t = to_time(b.time)
-            if d and t:
-                slot = db.query(Slot).filter_by(date=d, time=t).first()
-                if slot:
-                    slot.available = True
+            slot = db.query(Slot).filter_by(date=b.date, time=b.time).first()
+            if slot:
+                slot.available = True
             db.delete(b)
     db.commit()
 
-# ------------------------------
-# Slots & bookings helpers
-# ------------------------------
 def get_slots_sync(db: Session):
     clean_expired_slots(db)
     clean_stale_bookings(db)
@@ -169,36 +88,28 @@ def get_slots_sync(db: Session):
         if not d or not t:
             continue
         result.setdefault(d.isoformat(), []).append(t.strftime("%H:%M"))
-    # normalize times
-    for date, times in result.items():
-        result[date] = sorted(set(times))
+    for d, times in result.items():
+        result[d] = sorted(set(times))
     return result
-
 
 def get_bookings_sync(db: Session):
     clean_stale_bookings(db)
     bookings = db.query(Booking).all()
     result = []
     for b in bookings:
-        d = to_date(b.date)
-        t = to_time(b.time)
-        if not d or not t:
-            continue
         result.append({
             "id": b.id,
             "customer_name": b.customer_name,
             "service": b.service,
-            "date": d.isoformat(),
-            "time": t.strftime("%H:%M"),
+            "date": b.date.isoformat() if b.date else None,
+            "time": b.time.strftime("%H:%M") if b.time else None,
             "status": b.status
         })
     return result
 
 # ------------------------------
-# FastAPI app
+# Pages
 # ------------------------------
-app = FastAPI(title="Barbershop Booking AI Agent")
-
 @app.get("/", response_class=HTMLResponse)
 async def root():
     return FileResponse("chat.html")
@@ -208,7 +119,7 @@ async def dashboard():
     return FileResponse("dashboard.html")
 
 # ------------------------------
-# WebSocket
+# WebSockets for dashboard
 # ------------------------------
 active_connections: list[WebSocket] = []
 
@@ -218,19 +129,22 @@ async def dashboard_ws(websocket: WebSocket):
     active_connections.append(websocket)
     try:
         while True:
-            await websocket.receive_text()
+            await websocket.receive_text()  # keep alive
     except WebSocketDisconnect:
         active_connections.remove(websocket)
 
-
 async def broadcast_update(db: Session):
-    payload = {"slots": get_slots_sync(db), "bookings": get_bookings_sync(db)}
-    for ws in active_connections[:]:
+    slots = get_slots_sync(db)
+    bookings = get_bookings_sync(db)
+    payload = {"slots": slots, "bookings": bookings}
+    to_remove = []
+    for ws in active_connections:
         try:
             await ws.send_json(payload)
         except Exception:
-            active_connections.remove(ws)
-
+            to_remove.append(ws)
+    for ws in to_remove:
+        active_connections.remove(ws)
 
 def trigger_broadcast(db: Session):
     asyncio.create_task(broadcast_update(db))
@@ -247,7 +161,7 @@ async def detect_intent(payload: dict = Body(...)):
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are an intent classifier. Decide if the user wants to BOOK an appointment (haircut). The message may be in ANY language. Answer only 'book' or 'other'."},
+                {"role": "system", "content": "You are an intent classifier. Decide if the user wants to BOOK an appointment (haircut). Answer only 'book' or 'other'."},
                 {"role": "user", "content": message}
             ]
         )
@@ -264,8 +178,10 @@ async def detect_intent(payload: dict = Body(...)):
 @app.post("/chat")
 async def chat_with_agent(user_input: ChatMessage, db: Session = Depends(get_db)):
     try:
-        slots_dict = get_slots_sync(db)
-        future_slots = [f"{d} {t}" for d, times in slots_dict.items() for t in times]
+        clean_expired_slots(db)
+        clean_stale_bookings(db)
+        slots = get_slots_sync(db)
+        future_slots = [f"{d} {t}" for d, times in slots.items() for t in times]
         slot_info = ", ".join(future_slots) if future_slots else "No slots available"
 
         messages = [
@@ -294,12 +210,9 @@ Your task:
         booking_match = re.search(r"\{.*?\}", reply, re.DOTALL)
         if booking_match:
             booking_data = json.loads(booking_match.group())
-            d = to_date(booking_data["date"])
-            t = to_time(booking_data["time"])
-            if not d or not t:
-                return {"status": "ok", "reply": "❌ Invalid date/time format."}
-
-            slot_exists = db.query(Slot).filter_by(date=d, time=t, available=True).first()
+            slot_exists = db.query(Slot).filter_by(
+                date=to_date(booking_data["date"]), time=to_time(booking_data["time"]), available=True
+            ).first()
             if not slot_exists:
                 return {"status": "unavailable", "reply": "❌ Sorry, that slot is not available."}
 
@@ -308,15 +221,13 @@ Your task:
                 id=booking_id,
                 customer_name=booking_data["customer_name"],
                 service=booking_data["service"],
-                date=d,
-                time=t,
-                status="pending",
-                created_at=datetime.now()
+                date=to_date(booking_data["date"]),
+                time=to_time(booking_data["time"]),
+                status="pending"
             )
             db.add(booking)
             slot_exists.available = False
             db.commit()
-
             trigger_broadcast(db)
 
             return {
@@ -336,27 +247,17 @@ Your task:
 async def get_slots(db: Session = Depends(get_db)):
     return JSONResponse(get_slots_sync(db), headers={"Cache-Control": "no-store"})
 
-
 @app.post("/api/slots")
 async def add_slot(slot: dict, db: Session = Depends(get_db)):
-    d = to_date(slot["date"])
-    t = to_time(slot["time"])
-    if not d or not t:
-        raise HTTPException(status_code=400, detail="Invalid date/time")
-    new_slot = Slot(date=d, time=t, available=True)
+    new_slot = Slot(date=to_date(slot["date"]), time=to_time(slot["time"]), available=True)
     db.add(new_slot)
     db.commit()
     trigger_broadcast(db)
     return {"status": "ok"}
 
-
 @app.delete("/api/slots")
 async def delete_slot(date: str, time: str, db: Session = Depends(get_db)):
-    d = to_date(date)
-    t = to_time(time)
-    if not d or not t:
-        raise HTTPException(status_code=400, detail="Invalid date/time")
-    slot = db.query(Slot).filter_by(date=d, time=t).first()
+    slot = db.query(Slot).filter_by(date=to_date(date), time=to_time(time)).first()
     if slot:
         db.delete(slot)
         db.commit()
@@ -370,7 +271,6 @@ async def delete_slot(date: str, time: str, db: Session = Depends(get_db)):
 async def get_bookings(db: Session = Depends(get_db)):
     return JSONResponse(get_bookings_sync(db), headers={"Cache-Control": "no-store"})
 
-
 @app.post("/api/bookings/{booking_id}/cancel")
 async def cancel_booking(booking_id: str, db: Session = Depends(get_db)):
     booking = db.query(Booking).filter_by(id=booking_id).first()
@@ -383,7 +283,6 @@ async def cancel_booking(booking_id: str, db: Session = Depends(get_db)):
     db.commit()
     trigger_broadcast(db)
     return {"status": "cancelled", "booking_id": booking_id}
-
 
 @app.post("/api/bookings/{booking_id}/paid")
 async def mark_booking_paid(booking_id: str, db: Session = Depends(get_db)):
