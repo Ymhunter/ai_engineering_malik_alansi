@@ -253,11 +253,15 @@ async def add_slot(slot: dict, db: Session = Depends(get_db)):
     t = to_time(slot.get("time"))
     if not d or not t:
         raise HTTPException(status_code=400, detail=f"Invalid date/time: {slot}")
-    new_slot = Slot(date=d, time=t, available=True)
-    db.add(new_slot)
-    db.commit()
-    trigger_broadcast(db)
-    return {"status": "ok"}
+    try:
+        new_slot = Slot(date=d, time=t, available=True)
+        db.add(new_slot)
+        db.commit()
+        trigger_broadcast(db)
+        return {"status": "ok"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @app.delete("/api/slots")
 async def delete_slot(date: str, time: str, db: Session = Depends(get_db)):
@@ -266,12 +270,17 @@ async def delete_slot(date: str, time: str, db: Session = Depends(get_db)):
     if not d or not t:
         raise HTTPException(status_code=400, detail=f"Invalid date/time: {date} {time}")
     slot = db.query(Slot).filter_by(date=d, time=t).first()
-    if slot:
+    if not slot:
+        raise HTTPException(status_code=404, detail="Slot not found")
+    try:
         db.delete(slot)
         db.commit()
         trigger_broadcast(db)
         return {"status": "deleted"}
-    raise HTTPException(status_code=404, detail="Slot not found")
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
 
 # ------------------------------
 # Bookings API

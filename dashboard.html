@@ -144,27 +144,28 @@
   }
 
   // Add slot form
-  document.getElementById("slotForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const date = document.getElementById("slotDate").value;
-    let time = document.getElementById("slotTime").value;
+document.getElementById("slotForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const date = document.getElementById("slotDate").value;
+  let time = document.getElementById("slotTime").value;
 
-    // Normalize to HH:MM
-    if (time && time.length === 8) {
-      time = time.slice(0,5);
-    }
+  // Normalize to HH:MM
+  if (time && time.length >= 5) {
+    time = time.slice(0, 5);
+  }
 
-    const res = await fetch("/api/slots", {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ date, time })
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      alert("⚠️ Could not add slot: " + (err.detail || res.statusText));
-    }
+  const res = await fetch("/api/slots", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ date, time })
   });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    alert("⚠️ Could not add slot: " + (err.detail || res.statusText));
+  }
+});
+
 
   // Slot + Booking actions
   async function deleteSlot(date, time) {

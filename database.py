@@ -52,23 +52,35 @@ Base.metadata.create_all(bind=engine)
 # Helpers for safe parsing
 # ------------------------------
 def to_date(v):
+    if not v:
+        return None
     if isinstance(v, DateType):
         return v
-    if isinstance(v, str):
+    try:
+        return datetime.fromisoformat(str(v)).date()
+    except Exception:
         try:
-            return datetime.fromisoformat(v).date()
+            return datetime.strptime(str(v), "%Y-%m-%d").date()
         except Exception:
             return None
-    return None
 
 def to_time(v):
+    if not v:
+        return None
     if isinstance(v, TimeType):
         return v
-    if isinstance(v, str):
-        try:
-            return datetime.fromisoformat(f"2000-01-01T{v}").time()
-        except Exception:
-            return None
+    text = str(v)
+    try:
+        # Works for "09:00", "09:00:00", "09:00:00.000Z"
+        if "Z" in text:
+            text = text.replace("Z", "")
+        return datetime.fromisoformat(f"2000-01-01T{text}").time()
+    except Exception:
+        for fmt in ("%H:%M", "%H:%M:%S"):
+            try:
+                return datetime.strptime(text, fmt).time()
+            except Exception:
+                continue
     return None
 
 # ------------------------------
