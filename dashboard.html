@@ -102,21 +102,20 @@
     </table>
     <p id="lastUpdated"></p>
   </section>
-
 <script>
   const slotsTable = document.querySelector("#slotsTable tbody");
   const bookingsTable = document.querySelector("#bookingsTable tbody");
   const lastUpdated = document.getElementById("lastUpdated");
   let pollInterval = null;
 
-  // Render slots
+  // 🔹 Render slots table
   function renderSlots(slots) {
     slotsTable.innerHTML = "";
     const sortedDates = Object.keys(slots).sort();
     sortedDates.forEach(date => {
       const times = slots[date].sort();
       times.forEach(time => {
-        // ensure time is HH:MM
+        // ✅ Ensure time is always HH:MM (trim seconds if browser gives HH:MM:SS)
         if (time.length === 8) time = time.slice(0, 5);
         const tr = document.createElement("tr");
         tr.innerHTML = `
@@ -129,12 +128,12 @@
     });
   }
 
-  // Render bookings
+  // 🔹 Render bookings table
   function renderBookings(bookings) {
     bookingsTable.innerHTML = "";
     bookings.forEach(b => {
       let time = b.time;
-      if (time.length === 8) time = time.slice(0, 5);
+      if (time.length === 8) time = time.slice(0, 5); // ✅ fix format
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${b.customer_name}</td>
@@ -151,26 +150,33 @@
     });
   }
 
-  // Add slot form
+  // 🔹 Add slot form handler
   document.getElementById("slotForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const date = document.getElementById("slotDate").value;
-    let time = document.getElementById("slotTime").value;
-    if (time.length === 8) time = time.slice(0, 5); // trim seconds if present
+    const date = document.getElementById("slotDate").value; // already YYYY-MM-DD
+    let time = document.getElementById("slotTime").value;   // can be HH:MM or HH:MM:SS
+    if (time.length === 8) time = time.slice(0, 5);         // ✅ trim to HH:MM
+
     try {
-      await fetch("/api/slots", {
+      const res = await fetch("/api/slots", {
         method: "POST",
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({ date, time })
       });
+      if (!res.ok) {
+        const err = await res.text();
+        console.error("Add slot failed", err);
+        alert("⚠️ Could not add slot: " + err);
+      }
     } catch (err) {
-      console.error("Add slot failed", err);
+      console.error("Add slot error", err);
+      alert("⚠️ Network error when adding slot");
     }
   });
 
-  // Slot + Booking actions
+  // 🔹 Slot + Booking actions
   async function deleteSlot(date, time) {
-    if (time.length === 8) time = time.slice(0, 5);
+    if (time.length === 8) time = time.slice(0, 5); // ✅ normalize
     await fetch(`/api/slots?date=${date}&time=${time}`, { method: "DELETE" });
   }
   async function cancelBooking(id) {
@@ -180,12 +186,12 @@
     await fetch(`/api/bookings/${id}/paid`, { method: "POST" });
   }
 
-  // Timestamp
+  // 🔹 Timestamp
   function updateTimestamp() {
     lastUpdated.innerText = "Last updated: " + new Date().toLocaleTimeString();
   }
 
-  // Initial load (also used for polling fallback)
+  // 🔹 Initial load (also used for polling fallback)
   async function initialLoad() {
     try {
       const slotsRes = await fetch("/api/slots?ts=" + Date.now(), { cache: "no-store" });
@@ -200,7 +206,7 @@
     }
   }
 
-  // WebSocket connection for live updates
+  // 🔹 WebSocket connection for live updates
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${protocol}://${window.location.host}/ws/dashboard`);
 
@@ -214,19 +220,20 @@
   ws.onopen = () => {
     console.log("✅ Connected to live updates");
     if (pollInterval) {
-      clearInterval(pollInterval);
+      clearInterval(pollInterval); // stop fallback polling if WS is alive
       pollInterval = null;
     }
   };
 
   ws.onclose = () => {
     console.log("❌ Disconnected from live updates");
+    // fallback: poll every 15s if WS dies
     if (!pollInterval) {
       pollInterval = setInterval(initialLoad, 15000);
     }
   };
 
-  // Do an initial load immediately
+  // 🔹 Do an initial load immediately
   initialLoad();
 </script>
 </body>
