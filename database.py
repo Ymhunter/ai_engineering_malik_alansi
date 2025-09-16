@@ -1,11 +1,14 @@
 import os
 from datetime import datetime, date as DateType, time as TimeType
-from sqlalchemy import create_engine, Column, String, Integer, Boolean, inspect, text, Date, Time
+from sqlalchemy import (
+    create_engine, Column, String, Integer, Boolean,
+    inspect, text, Date, Time, UniqueConstraint
+)
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 # ------------------------------
-# Database URL (Postgres recommended)
+# Database URL (Postgres recommended, fallback SQLite)
 # ------------------------------
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./barbershop.db")
 
@@ -14,7 +17,7 @@ if DATABASE_URL.startswith("sqlite"):
         DATABASE_URL, connect_args={"check_same_thread": False}
     )
 else:
-    # Works with postgresql://... from Supabase, Neon, etc.
+    # Works with postgresql://... from Supabase, Neon, Render, etc.
     engine = create_engine(DATABASE_URL)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -29,8 +32,8 @@ class Booking(Base):
     id = Column(String, primary_key=True, index=True)   # UUID
     customer_name = Column(String, index=True)
     service = Column(String)
-    date = Column(Date)    # ✅ Postgres DATE type
-    time = Column(Time)    # ✅ Postgres TIME type
+    date = Column(Date)     # ✅ Proper DATE type
+    time = Column(Time)     # ✅ Proper TIME type
     status = Column(String, default="pending")  # pending / paid / cancelled
     created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
 
@@ -43,6 +46,10 @@ class Slot(Base):
     time = Column(Time)
     available = Column(Boolean, default=True)
 
+    # ✅ Prevent duplicate slots for same date+time
+    __table_args__ = (UniqueConstraint("date", "time", name="uq_slot_datetime"),)
+
+
 # ------------------------------
 # Create tables (if not exist)
 # ------------------------------
@@ -52,6 +59,7 @@ Base.metadata.create_all(bind=engine)
 # Helpers for safe parsing
 # ------------------------------
 def to_date(v):
+    """Convert string/Date to datetime.date"""
     if not v:
         return None
     if isinstance(v, DateType):
@@ -64,21 +72,23 @@ def to_date(v):
         except Exception:
             return None
 
+
 def to_time(v):
+    """Convert string/Time to datetime.time"""
     if not v:
         return None
     if isinstance(v, TimeType):
         return v
-    text = str(v)
+    text_v = str(v)
     try:
-        # Works for "09:00", "09:00:00", "09:00:00.000Z"
-        if "Z" in text:
-            text = text.replace("Z", "")
-        return datetime.fromisoformat(f"2000-01-01T{text}").time()
+        # Handles "09:00", "09:00:00", "09:00:00.000Z"
+        if "Z" in text_v:
+            text_v = text_v.replace("Z", "")
+        return datetime.fromisoformat(f"2000-01-01T{text_v}").time()
     except Exception:
         for fmt in ("%H:%M", "%H:%M:%S"):
             try:
-                return datetime.strptime(text, fmt).time()
+                return datetime.strptime(text_v, fmt).time()
             except Exception:
                 continue
     return None

@@ -144,28 +144,29 @@
   }
 
   // Add slot form
-document.getElementById("slotForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const date = document.getElementById("slotDate").value;
-  let time = document.getElementById("slotTime").value;
+  document.getElementById("slotForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const date = document.getElementById("slotDate").value;
+    let time = document.getElementById("slotTime").value;
 
-  // Normalize to HH:MM
-  if (time && time.length >= 5) {
-    time = time.slice(0, 5);
-  }
+    // Normalize to HH:MM
+    if (time && time.length >= 5) {
+      time = time.slice(0, 5);
+    }
 
-  const res = await fetch("/api/slots", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ date, time })
+    const res = await fetch("/api/slots", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ date, time })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert("⚠️ Could not add slot: " + (err.detail || res.statusText));
+    } else {
+      document.getElementById("slotForm").reset();
+    }
   });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    alert("⚠️ Could not add slot: " + (err.detail || res.statusText));
-  }
-});
-
 
   // Slot + Booking actions
   async function deleteSlot(date, time) {
@@ -176,10 +177,16 @@ document.getElementById("slotForm").addEventListener("submit", async (e) => {
     }
   }
   async function cancelBooking(id) {
-    await fetch(`/api/bookings/${id}/cancel`, { method: "POST" });
+    const res = await fetch(`/api/bookings/${id}/cancel`, { method: "POST" });
+    if (!res.ok) {
+      alert("⚠️ Could not cancel booking");
+    }
   }
   async function markPaid(id) {
-    await fetch(`/api/bookings/${id}/paid`, { method: "POST" });
+    const res = await fetch(`/api/bookings/${id}/paid`, { method: "POST" });
+    if (!res.ok) {
+      alert("⚠️ Could not mark booking paid");
+    }
   }
 
   // Timestamp
