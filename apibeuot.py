@@ -2,6 +2,7 @@ import os
 import uuid
 import json
 import re
+import asyncio
 from datetime import datetime, timedelta
 from fastapi import (
     FastAPI, HTTPException, Request, Depends,
@@ -133,6 +134,10 @@ async def broadcast_update(db: Session):
     for ws in to_remove:
         active_connections.remove(ws)
 
+def trigger_broadcast(db: Session):
+    """Schedule broadcast safely from sync endpoints"""
+    asyncio.create_task(broadcast_update(db))
+
 def get_slots_sync(db: Session):
     clean_expired_slots(db)
     clean_stale_bookings(db)
@@ -238,7 +243,7 @@ Your task:
             slot_exists.available = False
             db.commit()
 
-            await broadcast_update(db)
+            trigger_broadcast(db)
 
             return {
                 "status": "reserved",
@@ -262,7 +267,7 @@ async def add_slot(slot: dict, db: Session = Depends(get_db)):
     new_slot = Slot(date=slot["date"], time=slot["time"], available=True)
     db.add(new_slot)
     db.commit()
-    await broadcast_update(db)
+    trigger_broadcast(db)
     return {"status": "ok"}
 
 @app.delete("/api/slots")
@@ -271,7 +276,7 @@ async def delete_slot(date: str, time: str, db: Session = Depends(get_db)):
     if slot:
         db.delete(slot)
         db.commit()
-        await broadcast_update(db)
+        trigger_broadcast(db)
     return {"status": "deleted"}
 
 # ------------------------------
@@ -291,7 +296,7 @@ async def cancel_booking(booking_id: str, db: Session = Depends(get_db)):
     if slot:
         slot.available = True
     db.commit()
-    await broadcast_update(db)
+    trigger_broadcast(db)
     return {"status": "cancelled", "booking_id": booking_id}
 
 @app.post("/api/bookings/{booking_id}/paid")
@@ -301,5 +306,5 @@ async def mark_booking_paid(booking_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Booking not found")
     booking.status = "paid"
     db.commit()
-    await broadcast_update(db)
+    trigger_broadcast(db)
     return {"status": "paid", "booking_id": booking_id}
