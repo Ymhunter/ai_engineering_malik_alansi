@@ -8,11 +8,12 @@ from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import requests
+from fastapi.responses import JSONResponse
 from openai import OpenAI
 from sqlalchemy.orm import Session
 from fastapi import FastAPI, HTTPException, Request, Depends, Query, Body
 from database import SessionLocal, Booking, Slot
-
+from fastapi import WebSocket
 # ------------------------------
 # Load environment
 # ------------------------------
@@ -495,6 +496,8 @@ async def mark_booking_paid(booking_id: str, db: Session = Depends(get_db)):
 # ------------------------------
 # Slots API
 # ------------------------------
+
+
 @app.get("/api/slots")
 async def get_slots(db: Session = Depends(get_db)):
     clean_expired_slots(db)
@@ -503,7 +506,8 @@ async def get_slots(db: Session = Depends(get_db)):
     result = {}
     for s in slots:
         result.setdefault(s.date, []).append(s.time)
-    return result
+    return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
 
 @app.post("/api/slots")
 async def add_slot(slot: dict, db: Session = Depends(get_db)):
@@ -536,6 +540,15 @@ async def get_booking(booking_id: str, db: Session = Depends(get_db)):
         "time": booking.time,
         "status": booking.status
     }
+
+
+@app.websocket("/ws/dashboard")
+async def websocket_dashboard(ws: WebSocket):
+    await ws.accept()
+    while True:
+        data = await ws.receive_text()
+        # here you could push slots/bookings updates
+        await ws.send_json({"slots": "...", "bookings": "..."})
 
 
 @app.post("/api/bookings/{booking_id}/cancel")

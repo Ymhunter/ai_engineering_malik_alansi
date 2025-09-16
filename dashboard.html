@@ -181,6 +181,12 @@
         console.error(err);
       }
     }
+const ws = new WebSocket(`wss://${window.location.host}/ws/dashboard`);
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  if (data.slots) renderSlots(data.slots);
+  if (data.bookings) renderBookings(data.bookings);
+};
 
     document.getElementById("slotForm").addEventListener("submit", async (e) => {
       e.preventDefault();
