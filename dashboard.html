@@ -32,28 +32,16 @@
       border-radius: 8px;
       box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
-    h2 {
-      margin-top: 0;
-      color: #333;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 10px;
-    }
+    h2 { margin-top: 0; color: #333; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
     th, td {
       border: 1px solid #ddd;
       padding: 8px;
       text-align: center;
     }
-    th {
-      background: #f1f1f1;
-    }
+    th { background: #f1f1f1; }
     form {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 10px;
+      display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px;
     }
     input, button, select {
       padding: 8px;
@@ -67,18 +55,12 @@
       cursor: pointer;
       flex: 0 0 auto;
     }
-    button:hover {
-      background: #0056b3;
-    }
+    button:hover { background: #0056b3; }
     .status-pending { color: #ff9800; font-weight: bold; }
     .status-paid { color: #4caf50; font-weight: bold; }
     .status-cancelled { color: #f44336; font-weight: bold; }
     .status-processing { color: #2196f3; font-weight: bold; }
-    #lastUpdated {
-      text-align: right;
-      font-size: 12px;
-      color: #666;
-    }
+    #lastUpdated { text-align: right; font-size: 12px; color: #666; }
     @media (max-width: 600px) {
       table, th, td { font-size: 13px; }
       form { flex-direction: column; }
@@ -93,11 +75,7 @@
     <h2>Available Slots</h2>
     <table id="slotsTable">
       <thead>
-        <tr>
-          <th>Date</th>
-          <th>Time</th>
-          <th>Action</th>
-        </tr>
+        <tr><th>Date</th><th>Time</th><th>Action</th></tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -116,13 +94,8 @@
     <table id="bookingsTable">
       <thead>
         <tr>
-          <th>Name</th>
-          <th>Service</th>
-          <th>Date</th>
-          <th>Time</th>
-          <th>Status (DB)</th>
-          <th>Status (Klarna)</th>
-          <th>Action</th>
+          <th>Name</th><th>Service</th><th>Date</th>
+          <th>Time</th><th>Status</th><th>Action</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -130,106 +103,100 @@
     <p id="lastUpdated"></p>
   </section>
 
-  <script>
-    async function loadSlots() {
-      try {
-        const res = await fetch("/api/slots");
-        if (!res.ok) throw new Error("Failed to load slots");
-        const slots = await res.json();
-        const tbody = document.querySelector("#slotsTable tbody");
-        tbody.innerHTML = "";
-        for (const [date, times] of Object.entries(slots)) {
-          times.forEach(time => {
-            const tr = document.createElement("tr");
-            tr.innerHTML = `
-              <td>${date}</td>
-              <td>${time}</td>
-              <td><button onclick="deleteSlot('${date}','${time}')">❌ Delete</button></td>
-            `;
-            tbody.appendChild(tr);
-          });
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    }
+<script>
+  const slotsTable = document.querySelector("#slotsTable tbody");
+  const bookingsTable = document.querySelector("#bookingsTable tbody");
+  const lastUpdated = document.getElementById("lastUpdated");
 
-    async function loadBookings() {
-      try {
-        const res = await fetch("/api/bookings");
-        if (!res.ok) throw new Error("Failed to load bookings");
-        const bookings = await res.json();
-        const tbody = document.querySelector("#bookingsTable tbody");
-        tbody.innerHTML = "";
-        bookings.forEach(b => {
-          const tr = document.createElement("tr");
-          tr.innerHTML = `
-            <td>${b.customer_name}</td>
-            <td>${b.service}</td>
-            <td>${b.date}</td>
-            <td>${b.time}</td>
-            <td class="status-${b.status}">${b.status}</td>
-            <td>${b.klarna_status || "N/A"}</td>
-            <td>
-              ${b.status !== "cancelled" ? `<button onclick="cancelBooking('${b.id}')">❌ Cancel</button>` : ""}
-              ${b.status === "pending" ? `<button onclick="markPaid('${b.id}')">✅ Mark Paid</button>` : ""}
-            </td>
-          `;
-          tbody.appendChild(tr);
-        });
-      } catch (err) {
-        console.error(err);
-      }
-    }
-const ws = new WebSocket(`wss://${window.location.host}/ws/dashboard`);
-ws.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  if (data.slots) renderSlots(data.slots);
-  if (data.bookings) renderBookings(data.bookings);
-};
-
-    document.getElementById("slotForm").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const date = document.getElementById("slotDate").value;
-      const time = document.getElementById("slotTime").value;
-      await fetch("/api/slots", {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ date, time })
+  // Render slots
+  function renderSlots(slots) {
+    slotsTable.innerHTML = "";
+    for (const [date, times] of Object.entries(slots)) {
+      times.forEach(time => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${date}</td>
+          <td>${time}</td>
+          <td><button onclick="deleteSlot('${date}','${time}')">❌ Delete</button></td>
+        `;
+        slotsTable.appendChild(tr);
       });
-      loadSlots();
+    }
+  }
+
+  // Render bookings
+  function renderBookings(bookings) {
+    bookingsTable.innerHTML = "";
+    bookings.forEach(b => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${b.customer_name}</td>
+        <td>${b.service}</td>
+        <td>${b.date}</td>
+        <td>${b.time}</td>
+        <td class="status-${b.status}">${b.status}</td>
+        <td>
+          ${b.status !== "cancelled" ? `<button onclick="cancelBooking('${b.id}')">❌ Cancel</button>` : ""}
+          ${b.status === "pending" ? `<button onclick="markPaid('${b.id}')">✅ Mark Paid</button>` : ""}
+        </td>
+      `;
+      bookingsTable.appendChild(tr);
     });
+  }
 
-    async function deleteSlot(date, time) {
-      await fetch(`/api/slots?date=${date}&time=${time}`, { method: "DELETE" });
-      loadSlots();
-    }
+  // Add slot form
+  document.getElementById("slotForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const date = document.getElementById("slotDate").value;
+    const time = document.getElementById("slotTime").value;
+    await fetch("/api/slots", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ date, time })
+    });
+  });
 
-    async function cancelBooking(id) {
-      await fetch(`/api/bookings/${id}/cancel`, { method: "POST" });
-      loadBookings();
-    }
+  // Slot + Booking actions
+  async function deleteSlot(date, time) {
+    await fetch(`/api/slots?date=${date}&time=${time}`, { method: "DELETE" });
+  }
+  async function cancelBooking(id) {
+    await fetch(`/api/bookings/${id}/cancel`, { method: "POST" });
+  }
+  async function markPaid(id) {
+    await fetch(`/api/bookings/${id}/paid`, { method: "POST" });
+  }
 
-    async function markPaid(id) {
-      await fetch(`/api/bookings/${id}/paid`, { method: "POST" });
-      loadBookings();
-    }
+  // Timestamp
+  function updateTimestamp() {
+    lastUpdated.innerText = "Last updated: " + new Date().toLocaleTimeString();
+  }
 
-    function updateTimestamp() {
-      document.getElementById("lastUpdated").innerText =
-        "Last updated: " + new Date().toLocaleTimeString();
-    }
+  // WebSocket connection for live updates
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  const ws = new WebSocket(`${protocol}://${window.location.host}/ws/dashboard`);
 
-    // auto-refresh every 10s
-    setInterval(() => {
-      loadSlots();
-      loadBookings();
-      updateTimestamp();
-    }, 10000);
-
-    loadSlots();
-    loadBookings();
+  ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.slots) renderSlots(data.slots);
+    if (data.bookings) renderBookings(data.bookings);
     updateTimestamp();
-  </script>
+  };
+
+  ws.onopen = () => console.log("✅ Connected to live updates");
+  ws.onclose = () => console.log("❌ Disconnected from live updates");
+
+  // Initial load (fallback in case websocket is slow to connect)
+  async function initialLoad() {
+    const slotsRes = await fetch("/api/slots?ts=" + Date.now(), { cache: "no-store" });
+    renderSlots(await slotsRes.json());
+
+    const bookingsRes = await fetch("/api/bookings?ts=" + Date.now(), { cache: "no-store" });
+    renderBookings(await bookingsRes.json());
+
+    updateTimestamp();
+  }
+  initialLoad();
+</script>
 </body>
 </html>
