@@ -254,11 +254,9 @@ async def add_slot(slot: dict = Body(...), db: Session = Depends(get_db)):
     if not d or not t:
         raise HTTPException(status_code=400, detail=f"Invalid date/time: {slot}")
 
-    # prevent 00:00 ghost slots
     if t.strftime("%H:%M") == "00:00":
         raise HTTPException(status_code=400, detail="Please select a valid time")
 
-    # check for duplicates
     existing = db.query(Slot).filter_by(date=d, time=t).first()
     if existing:
         raise HTTPException(status_code=400, detail="Slot already exists")
@@ -272,6 +270,7 @@ async def add_slot(slot: dict = Body(...), db: Session = Depends(get_db)):
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
 
 @app.delete("/api/slots")
 async def delete_slot(date: str, time: str, db: Session = Depends(get_db)):
