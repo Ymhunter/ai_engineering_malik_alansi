@@ -1,62 +1,87 @@
 import os
-from datetime import datetime
-from sqlalchemy import create_engine
+from datetime import datetime, date as DateType, time as TimeType
+from sqlalchemy import create_engine, Column, String, Integer, Boolean, inspect, text, Date, Time
+from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-from database import Base, Slot, Booking, to_date, to_time  # reuse helpers if available
-
 # ------------------------------
-# Database URL
+# Database URL (Postgres recommended)
 # ------------------------------
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./barbershop.db")
 
 if DATABASE_URL.startswith("sqlite"):
-    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+    engine = create_engine(
+        DATABASE_URL, connect_args={"check_same_thread": False}
+    )
 else:
+    # Works with postgresql://... from Supabase, Neon, etc.
     engine = create_engine(DATABASE_URL)
 
-SessionLocal = sessionmaker(bind=engine)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
 
 # ------------------------------
-# Normalize existing records
+# Models
 # ------------------------------
-def normalize_db():
-    db = SessionLocal()
+class Booking(Base):
+    __tablename__ = "bookings"
 
-    # ✅ Normalize Slots
-    for slot in db.query(Slot).all():
-        d = to_date(slot.date)
-        t = to_time(slot.time)
-        if not d or not t:
-            print(f"❌ Removing bad slot {slot.id}")
-            db.delete(slot)
-            continue
-        slot.date = d
-        slot.time = t.replace(second=0, microsecond=0)  # ensure HH:MM only
+    id = Column(String, primary_key=True, index=True)   # UUID
+    customer_name = Column(String, index=True)
+    service = Column(String)
+    date = Column(Date)    # ✅ Postgres DATE type
+    time = Column(Time)    # ✅ Postgres TIME type
+    status = Column(String, default="pending")  # pending / paid / cancelled
+    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
 
-    # ✅ Normalize Bookings
-    for b in db.query(Booking).all():
-        d = to_date(b.date)
-        t = to_time(b.time)
-        if not d or not t:
-            print(f"❌ Removing bad booking {b.id}")
-            db.delete(b)
-            continue
-        b.date = d
-        b.time = t.replace(second=0, microsecond=0)
 
-        if isinstance(b.created_at, str):
+class Slot(Base):
+    __tablename__ = "slots"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    date = Column(Date, index=True)
+    time = Column(Time)
+    available = Column(Boolean, default=True)
+
+# ------------------------------
+# Create tables (if not exist)
+# ------------------------------
+Base.metadata.create_all(bind=engine)
+
+# ------------------------------
+# Helpers for safe parsing
+# ------------------------------
+def to_date(v) -> DateType | None:
+    if isinstance(v, DateType):
+        return v
+    if isinstance(v, str) and v:
+        try:
+            return datetime.strptime(v, "%Y-%m-%d").date()
+        except ValueError:
+            return None
+    return None
+
+def to_time(v) -> TimeType | None:
+    if isinstance(v, TimeType):
+        return v
+    if isinstance(v, str) and v:
+        for fmt in ("%H:%M", "%H:%M:%S"):
             try:
-                b.created_at = datetime.fromisoformat(b.created_at.replace("Z", "+00:00"))
-            except Exception:
-                b.created_at = datetime.utcnow()
-
-    db.commit()
-    db.close()
-    print("✅ Database normalized!")
+                return datetime.strptime(v, fmt).time()
+            except ValueError:
+                continue
+    return None
 
 # ------------------------------
-# Run
+# SQLite-only migration helper
 # ------------------------------
-if __name__ == "__main__":
-    normalize_db()
+def ensure_created_at_column():
+    if DATABASE_URL.startswith("sqlite"):
+        inspector = inspect(engine)
+        cols = [c["name"] for c in inspector.get_columns("bookings")]
+        if "created_at" not in cols:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE bookings ADD COLUMN created_at VARCHAR"))
+                conn.commit()
+
+ensure_created_at_column()
