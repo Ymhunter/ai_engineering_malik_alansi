@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <title>Barbershop Chatbot</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -56,8 +55,6 @@
       background: #ffb347; cursor: pointer;
       color: #000; font-weight: bold; font-size: 15px;
     }
-
-    /* Suggestion chips */
     .suggestions {
       display: flex; justify-content: center; flex-wrap: wrap;
       gap: 10px; margin: 15px 0;
@@ -70,8 +67,6 @@
       transition: background 0.2s;
     }
     .suggestions button:hover { background: #d8dadf; }
-
-    /* Calendar styles */
     .calendar {
       background: #fff;
       border: 1px solid #ddd;
@@ -111,8 +106,6 @@
     <div class="msg bot">
       👋 Welcome! How can I help you today?
     </div>
-
-    <!-- Floating suggestion chips -->
     <div class="suggestions" id="suggestions">
       <button onclick="quickAsk('What services do you offer?')">What services do you offer?</button>
       <button onclick="quickAsk('What dates are available?')">What dates are available?</button>
@@ -142,7 +135,7 @@
     if (conversation.length > 16) conversation.shift();
   }
   function quickAsk(text) {
-    suggestions.style.display = "none"; // hide suggestions after first use
+    suggestions.style.display = "none";
     input.value = text;
     sendMessage();
   }
@@ -152,9 +145,8 @@
     if (!text) return;
     appendMessage(text, "user");
     input.value = "";
-    suggestions.style.display = "none"; // hide after any message
+    suggestions.style.display = "none";
 
-    // 🔎 Step 1: check intent in ANY language
     try {
       const intentRes = await fetch("/intent", {
         method: "POST",
@@ -170,7 +162,6 @@
       console.warn("Intent check failed", err);
     }
 
-    // 🔎 Step 2: if not booking, send to /chat
     const loading = document.createElement("span");
     loading.className = "loading"; loading.innerText = "⏳...";
     chat.appendChild(loading); scrollToBottom();
@@ -273,6 +264,7 @@
     timeBox = document.createElement("div");
     timeBox.className = "times";
     times.forEach(t => {
+      if (t.length === 8) t = t.slice(0, 5); // ✅ trim seconds
       const btn = document.createElement("button");
       btn.className = "time-btn"; btn.textContent = t;
       btn.onclick = () => sendBooking(date, t);
@@ -282,6 +274,7 @@
   }
 
   async function sendBooking(date, time) {
+    if (time.length === 8) time = time.slice(0, 5); // ✅ normalize
     appendMessage(`I want ${date} at ${time}`, "user");
     const loading = document.createElement("span");
     loading.className = "loading"; loading.innerText = "⏳...";

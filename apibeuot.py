@@ -12,7 +12,6 @@ from fastapi import (
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
-import requests
 from openai import OpenAI
 from sqlalchemy import create_engine, Column, String, Integer, Boolean, Date, Time, DateTime
 from sqlalchemy.ext.declarative import declarative_base
@@ -23,10 +22,6 @@ from sqlalchemy.orm import sessionmaker, Session
 # ------------------------------
 load_dotenv()
 
-KLARNA_USERNAME = os.getenv("KLARNA_USERNAME")
-KLARNA_PASSWORD = os.getenv("KLARNA_PASSWORD")
-PUBLIC_URL = os.getenv("PUBLIC_URL", "https://your-app.onrender.com")
-KLARNA_API_URL = os.getenv("KLARNA_API_URL", "https://api.playground.klarna.com")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./barbershop.db")
 
@@ -89,23 +84,16 @@ class ChatMessage(BaseModel):
     message: str
     history: list | None = None
 
-
-class KlarnaPaymentRequest(BaseModel):
-    amount: float
-    service: str
-    customer_name: str
-    booking_id: str | None = None
-
 # ------------------------------
-# Helpers: coercion for legacy values
+# Helpers
 # ------------------------------
 def to_date(v) -> DateType | None:
     if isinstance(v, DateType):
         return v
-    if isinstance(v, str) and v:
+    if isinstance(v, str):
         try:
             return datetime.strptime(v, "%Y-%m-%d").date()
-        except ValueError:
+        except Exception:
             try:
                 return datetime.fromisoformat(v).date()
             except Exception:
@@ -116,57 +104,47 @@ def to_date(v) -> DateType | None:
 def to_time(v) -> TimeType | None:
     if isinstance(v, TimeType):
         return v
-    if isinstance(v, str) and v:
+    if isinstance(v, str):
         for fmt in ("%H:%M", "%H:%M:%S"):
             try:
                 return datetime.strptime(v, fmt).time()
-            except ValueError:
+            except Exception:
                 continue
     return None
 
 
-def to_datetime_utc(v) -> datetime | None:
+def to_datetime(v) -> datetime | None:
     if isinstance(v, datetime):
         return v
-    if isinstance(v, str) and v:
+    if isinstance(v, str):
         try:
-            return datetime.fromisoformat(v.replace("Z", "+00:00")).replace(tzinfo=None)
+            return datetime.fromisoformat(v.replace("Z", "+00:00"))
         except Exception:
-            pass
-        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
-            try:
-                return datetime.strptime(v, fmt)
-            except ValueError:
-                continue
+            return None
     return None
 
 # ------------------------------
-# Cleanup helpers
+# Cleanup
 # ------------------------------
 def clean_expired_slots(db: Session):
-    now = datetime.utcnow()
-    slots = db.query(Slot).all()
-    removed = False
-    for s in slots:
+    """Delete slots in the past (local time)."""
+    now = datetime.now()  # ✅ local, not UTC
+    for s in db.query(Slot).all():
         d = to_date(s.date)
         t = to_time(s.time)
         if not d or not t:
-            db.delete(s)
-            removed = True
             continue
         if datetime.combine(d, t) <= now:
             db.delete(s)
-            removed = True
-    if removed:
-        db.commit()
+    db.commit()
 
 
 def clean_stale_bookings(db: Session):
-    now = datetime.utcnow()
+    """Delete pending bookings older than 10 minutes and free slots."""
+    now = datetime.now()
     stale = db.query(Booking).filter_by(status="pending").all()
-    changed = False
     for b in stale:
-        created = to_datetime_utc(b.created_at) or (now - timedelta(hours=1))
+        created = to_datetime(b.created_at) or now - timedelta(hours=1)
         if created + timedelta(minutes=10) < now:
             d = to_date(b.date)
             t = to_time(b.time)
@@ -175,11 +153,11 @@ def clean_stale_bookings(db: Session):
                 if slot:
                     slot.available = True
             db.delete(b)
-            changed = True
-    if changed:
-        db.commit()
+    db.commit()
 
-
+# ------------------------------
+# Slots & bookings helpers
+# ------------------------------
 def get_slots_sync(db: Session):
     clean_expired_slots(db)
     clean_stale_bookings(db)
@@ -189,10 +167,11 @@ def get_slots_sync(db: Session):
         d = to_date(s.date)
         t = to_time(s.time)
         if not d or not t:
-            db.delete(s)
             continue
         result.setdefault(d.isoformat(), []).append(t.strftime("%H:%M"))
-    db.commit()
+    # normalize times
+    for date, times in result.items():
+        result[date] = sorted(set(times))
     return result
 
 
@@ -204,7 +183,6 @@ def get_bookings_sync(db: Session):
         d = to_date(b.date)
         t = to_time(b.time)
         if not d or not t:
-            db.delete(b)
             continue
         result.append({
             "id": b.id,
@@ -214,11 +192,10 @@ def get_bookings_sync(db: Session):
             "time": t.strftime("%H:%M"),
             "status": b.status
         })
-    db.commit()
     return result
 
 # ------------------------------
-# FastAPI app + pages
+# FastAPI app
 # ------------------------------
 app = FastAPI(title="Barbershop Booking AI Agent")
 
@@ -231,7 +208,7 @@ async def dashboard():
     return FileResponse("dashboard.html")
 
 # ------------------------------
-# WebSockets for live updates
+# WebSocket
 # ------------------------------
 active_connections: list[WebSocket] = []
 
@@ -248,14 +225,11 @@ async def dashboard_ws(websocket: WebSocket):
 
 async def broadcast_update(db: Session):
     payload = {"slots": get_slots_sync(db), "bookings": get_bookings_sync(db)}
-    to_remove = []
-    for ws in active_connections:
+    for ws in active_connections[:]:
         try:
             await ws.send_json(payload)
         except Exception:
-            to_remove.append(ws)
-    for ws in to_remove:
-        active_connections.remove(ws)
+            active_connections.remove(ws)
 
 
 def trigger_broadcast(db: Session):
@@ -290,10 +264,8 @@ async def detect_intent(payload: dict = Body(...)):
 @app.post("/chat")
 async def chat_with_agent(user_input: ChatMessage, db: Session = Depends(get_db)):
     try:
-        clean_expired_slots(db)
-        clean_stale_bookings(db)
-        slots = db.query(Slot).filter_by(available=True).all()
-        future_slots = [f"{to_date(s.date).isoformat()} {to_time(s.time).strftime('%H:%M')}" for s in slots if to_date(s.date) and to_time(s.time)]
+        slots_dict = get_slots_sync(db)
+        future_slots = [f"{d} {t}" for d, times in slots_dict.items() for t in times]
         slot_info = ", ".join(future_slots) if future_slots else "No slots available"
 
         messages = [
@@ -339,7 +311,7 @@ Your task:
                 date=d,
                 time=t,
                 status="pending",
-                created_at=datetime.utcnow()
+                created_at=datetime.now()
             )
             db.add(booking)
             slot_exists.available = False
@@ -350,9 +322,7 @@ Your task:
             return {
                 "status": "reserved",
                 "reply": f"✅ Reserved! Booking ID: {booking_id} for {booking.customer_name} at {booking.time.strftime('%H:%M')} on {booking.date.isoformat()}.<br><br>💳 Pay now?",
-                "booking_id": booking_id,
-                "customer_name": booking.customer_name,
-                "service": booking.service
+                "booking_id": booking_id
             }
 
         return {"status": "ok", "reply": reply}
