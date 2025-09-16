@@ -246,9 +246,10 @@ Your task:
 @app.get("/api/slots")
 async def get_slots(db: Session = Depends(get_db)):
     return JSONResponse(get_slots_sync(db), headers={"Cache-Control": "no-store"})
+from fastapi import Body
 
 @app.post("/api/slots")
-async def add_slot(slot: dict, db: Session = Depends(get_db)):
+async def add_slot(slot: dict = Body(...), db: Session = Depends(get_db)):
     d = to_date(slot.get("date"))
     t = to_time(slot.get("time"))
     if not d or not t:
@@ -262,6 +263,7 @@ async def add_slot(slot: dict, db: Session = Depends(get_db)):
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
 
 @app.delete("/api/slots")
 async def delete_slot(date: str, time: str, db: Session = Depends(get_db)):
