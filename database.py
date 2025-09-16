@@ -10,7 +10,9 @@ from sqlalchemy.orm import sessionmaker
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./barbershop.db")
 
 if DATABASE_URL.startswith("sqlite"):
-    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+    engine = create_engine(
+        DATABASE_URL, connect_args={"check_same_thread": False}
+    )
 else:
     engine = create_engine(DATABASE_URL)
 
@@ -29,7 +31,7 @@ class Booking(Base):
     date = Column(String)   # YYYY-MM-DD
     time = Column(String)   # HH:MM
     status = Column(String, default="pending")  # pending / paid / cancelled
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())  # NEW
+    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
 
 
 class Slot(Base):
