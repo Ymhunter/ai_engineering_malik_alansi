@@ -43,7 +43,7 @@
     form {
       display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px;
     }
-    input, button {
+    input, button, select {
       padding: 8px;
       border: 1px solid #ccc;
       border-radius: 6px;
@@ -59,7 +59,6 @@
     .status-pending { color: #ff9800; font-weight: bold; }
     .status-paid { color: #4caf50; font-weight: bold; }
     .status-cancelled { color: #f44336; font-weight: bold; }
-    .status-processing { color: #2196f3; font-weight: bold; }
     #lastUpdated { text-align: right; font-size: 12px; color: #666; }
     @media (max-width: 600px) {
       table, th, td { font-size: 13px; }
@@ -107,16 +106,12 @@
   const slotsTable = document.querySelector("#slotsTable tbody");
   const bookingsTable = document.querySelector("#bookingsTable tbody");
   const lastUpdated = document.getElementById("lastUpdated");
-  let pollInterval = null;
 
-  // 🔹 Render slots
+  // Render slots
   function renderSlots(slots) {
     slotsTable.innerHTML = "";
-    const sortedDates = Object.keys(slots).sort();
-    sortedDates.forEach(date => {
-      const times = slots[date].sort();
+    for (const [date, times] of Object.entries(slots)) {
       times.forEach(time => {
-        if (time.length === 8) time = time.slice(0, 5); // ✅ trim seconds
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${date}</td>
@@ -125,21 +120,19 @@
         `;
         slotsTable.appendChild(tr);
       });
-    });
+    }
   }
 
-  // 🔹 Render bookings
+  // Render bookings
   function renderBookings(bookings) {
     bookingsTable.innerHTML = "";
     bookings.forEach(b => {
-      let time = b.time;
-      if (time.length === 8) time = time.slice(0, 5);
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${b.customer_name}</td>
         <td>${b.service}</td>
         <td>${b.date}</td>
-        <td>${time}</td>
+        <td>${b.time}</td>
         <td class="status-${b.status}">${b.status}</td>
         <td>
           ${b.status !== "cancelled" ? `<button onclick="cancelBooking('${b.id}')">❌ Cancel</button>` : ""}
@@ -150,34 +143,36 @@
     });
   }
 
-  // 🔹 Add slot
+  // Add slot form
   document.getElementById("slotForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const date = document.getElementById("slotDate").value;
     let time = document.getElementById("slotTime").value;
-    if (time.length === 8) time = time.slice(0, 5); // ✅ trim seconds
 
-    try {
-      const res = await fetch("/api/slots", {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ date, time })
-      });
-      if (!res.ok) {
-        const err = await res.text();
-        console.error("Add slot failed", err);
-        alert("⚠️ Could not add slot: " + err);
-      }
-    } catch (err) {
-      console.error("Add slot error", err);
-      alert("⚠️ Network error when adding slot");
+    // Normalize to HH:MM
+    if (time && time.length === 8) {
+      time = time.slice(0,5);
+    }
+
+    const res = await fetch("/api/slots", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ date, time })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert("⚠️ Could not add slot: " + (err.detail || res.statusText));
     }
   });
 
-  // 🔹 Slot + Booking actions
+  // Slot + Booking actions
   async function deleteSlot(date, time) {
-    if (time.length === 8) time = time.slice(0, 5);
-    await fetch(`/api/slots?date=${date}&time=${time}`, { method: "DELETE" });
+    const res = await fetch(`/api/slots?date=${date}&time=${time}`, { method: "DELETE" });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert("⚠️ Could not delete slot: " + (err.detail || res.statusText));
+    }
   }
   async function cancelBooking(id) {
     await fetch(`/api/bookings/${id}/cancel`, { method: "POST" });
@@ -186,27 +181,12 @@
     await fetch(`/api/bookings/${id}/paid`, { method: "POST" });
   }
 
-  // 🔹 Timestamp
+  // Timestamp
   function updateTimestamp() {
     lastUpdated.innerText = "Last updated: " + new Date().toLocaleTimeString();
   }
 
-  // 🔹 Initial load (also used for polling fallback)
-  async function initialLoad() {
-    try {
-      const slotsRes = await fetch("/api/slots?ts=" + Date.now(), { cache: "no-store" });
-      renderSlots(await slotsRes.json());
-
-      const bookingsRes = await fetch("/api/bookings?ts=" + Date.now(), { cache: "no-store" });
-      renderBookings(await bookingsRes.json());
-
-      updateTimestamp();
-    } catch (err) {
-      console.error("Failed to load data", err);
-    }
-  }
-
-  // 🔹 WebSocket connection
+  // WebSocket connection for live updates
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${protocol}://${window.location.host}/ws/dashboard`);
 
@@ -217,22 +197,19 @@
     updateTimestamp();
   };
 
-  ws.onopen = () => {
-    console.log("✅ Connected to live updates");
-    if (pollInterval) {
-      clearInterval(pollInterval);
-      pollInterval = null;
-    }
-  };
+  ws.onopen = () => console.log("✅ Connected to live updates");
+  ws.onclose = () => console.log("❌ Disconnected from live updates");
 
-  ws.onclose = () => {
-    console.log("❌ Disconnected from live updates, switching to polling");
-    if (!pollInterval) {
-      pollInterval = setInterval(initialLoad, 15000);
-    }
-  };
+  // Initial load
+  async function initialLoad() {
+    const slotsRes = await fetch("/api/slots?ts=" + Date.now(), { cache: "no-store" });
+    renderSlots(await slotsRes.json());
 
-  // 🔹 Load immediately
+    const bookingsRes = await fetch("/api/bookings?ts=" + Date.now(), { cache: "no-store" });
+    renderBookings(await bookingsRes.json());
+
+    updateTimestamp();
+  }
   initialLoad();
 </script>
 </body>
