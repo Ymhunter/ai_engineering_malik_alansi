@@ -1,8 +1,9 @@
 import os
 from datetime import datetime
-from sqlalchemy import create_engine, Column, String, Integer, Boolean, inspect, text
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+from database import Base, Slot, Booking, to_date, to_time  # reuse helpers if available
 
 # ------------------------------
 # Database URL
@@ -10,52 +11,52 @@ from sqlalchemy.orm import sessionmaker
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./barbershop.db")
 
 if DATABASE_URL.startswith("sqlite"):
-    engine = create_engine(
-        DATABASE_URL, connect_args={"check_same_thread": False}
-    )
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 else:
     engine = create_engine(DATABASE_URL)
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+SessionLocal = sessionmaker(bind=engine)
 
 # ------------------------------
-# Models
+# Normalize existing records
 # ------------------------------
-class Booking(Base):
-    __tablename__ = "bookings"
+def normalize_db():
+    db = SessionLocal()
 
-    id = Column(String, primary_key=True, index=True)   # UUID
-    customer_name = Column(String, index=True)
-    service = Column(String)
-    date = Column(String)   # YYYY-MM-DD
-    time = Column(String)   # HH:MM
-    status = Column(String, default="pending")  # pending / paid / cancelled
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    # ✅ Normalize Slots
+    for slot in db.query(Slot).all():
+        d = to_date(slot.date)
+        t = to_time(slot.time)
+        if not d or not t:
+            print(f"❌ Removing bad slot {slot.id}")
+            db.delete(slot)
+            continue
+        slot.date = d
+        slot.time = t.replace(second=0, microsecond=0)  # ensure HH:MM only
 
+    # ✅ Normalize Bookings
+    for b in db.query(Booking).all():
+        d = to_date(b.date)
+        t = to_time(b.time)
+        if not d or not t:
+            print(f"❌ Removing bad booking {b.id}")
+            db.delete(b)
+            continue
+        b.date = d
+        b.time = t.replace(second=0, microsecond=0)
 
-class Slot(Base):
-    __tablename__ = "slots"
+        if isinstance(b.created_at, str):
+            try:
+                b.created_at = datetime.fromisoformat(b.created_at.replace("Z", "+00:00"))
+            except Exception:
+                b.created_at = datetime.utcnow()
 
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    date = Column(String, index=True)   # YYYY-MM-DD
-    time = Column(String)               # HH:MM
-    available = Column(Boolean, default=True)
+    db.commit()
+    db.close()
+    print("✅ Database normalized!")
 
 # ------------------------------
-# Create tables (if not exist)
+# Run
 # ------------------------------
-Base.metadata.create_all(bind=engine)
-
-# ------------------------------
-# Ensure created_at column exists (for old DBs)
-# ------------------------------
-def ensure_created_at_column():
-    inspector = inspect(engine)
-    cols = [c["name"] for c in inspector.get_columns("bookings")]
-    if "created_at" not in cols:
-        with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE bookings ADD COLUMN created_at VARCHAR"))
-            conn.commit()
-
-ensure_created_at_column()
+if __name__ == "__main__":
+    normalize_db()
