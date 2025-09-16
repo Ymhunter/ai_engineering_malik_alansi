@@ -43,7 +43,7 @@
     form {
       display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px;
     }
-    input, button, select {
+    input, button {
       padding: 8px;
       border: 1px solid #ccc;
       border-radius: 6px;
@@ -112,11 +112,12 @@
   // Render slots
   function renderSlots(slots) {
     slotsTable.innerHTML = "";
-    // sort dates
     const sortedDates = Object.keys(slots).sort();
     sortedDates.forEach(date => {
-      const times = slots[date].sort(); // sort times
+      const times = slots[date].sort();
       times.forEach(time => {
+        // ensure time is HH:MM
+        if (time.length === 8) time = time.slice(0, 5);
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${date}</td>
@@ -132,12 +133,14 @@
   function renderBookings(bookings) {
     bookingsTable.innerHTML = "";
     bookings.forEach(b => {
+      let time = b.time;
+      if (time.length === 8) time = time.slice(0, 5);
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${b.customer_name}</td>
         <td>${b.service}</td>
         <td>${b.date}</td>
-        <td>${b.time}</td>
+        <td>${time}</td>
         <td class="status-${b.status}">${b.status}</td>
         <td>
           ${b.status !== "cancelled" ? `<button onclick="cancelBooking('${b.id}')">❌ Cancel</button>` : ""}
@@ -152,16 +155,22 @@
   document.getElementById("slotForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const date = document.getElementById("slotDate").value;
-    const time = document.getElementById("slotTime").value;
-    await fetch("/api/slots", {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ date, time })
-    });
+    let time = document.getElementById("slotTime").value;
+    if (time.length === 8) time = time.slice(0, 5); // trim seconds if present
+    try {
+      await fetch("/api/slots", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ date, time })
+      });
+    } catch (err) {
+      console.error("Add slot failed", err);
+    }
   });
 
   // Slot + Booking actions
   async function deleteSlot(date, time) {
+    if (time.length === 8) time = time.slice(0, 5);
     await fetch(`/api/slots?date=${date}&time=${time}`, { method: "DELETE" });
   }
   async function cancelBooking(id) {
@@ -205,14 +214,13 @@
   ws.onopen = () => {
     console.log("✅ Connected to live updates");
     if (pollInterval) {
-      clearInterval(pollInterval); // stop polling once WS is back
+      clearInterval(pollInterval);
       pollInterval = null;
     }
   };
 
   ws.onclose = () => {
     console.log("❌ Disconnected from live updates");
-    // fallback: poll every 15s
     if (!pollInterval) {
       pollInterval = setInterval(initialLoad, 15000);
     }
