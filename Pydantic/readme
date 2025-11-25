@@ -1,0 +1,64 @@
+Five Ws² of Pydantic
+
+This folder is for learning and understanding the Five Ws² of Pydantic, a powerful Python library for data validation and settings management.
+
+# 1. Who made Pydantic?
+Samuel Colvin is the founder,he holds a degree in Mechanical Engineering, Mechanics and Fluid Dynamics from the University of Cambridge, Pydantic was founded in 2017,
+
+# 2. who use's Pydantic?
+Pydantic is used in python, speically in:
+
+1. Web Frameworks & APIs for example:
+FastAPI:
+Request body validation
+Response schemas
+Settings & configuration
+
+2. Companies & Organizations
+Many major tech companies use Pydantic because it reduces bugs and simplifies data handling. Examples include:
+Microsoft (Azure SDKs)
+Amazon (internal tools, data validation)
+Shopify
+Uber
+
+3. Data Engineering & Data Science Tools
+Pydantic appears in ETL, ML pipeline, and data modeling tools:
+Dagster (data orchestration)
+Prefect 2.0
+Great Expectations
+BentoML
+
+# 3. Who should choose Pydantic over other validation libraries?
+1. Want automatic data validation using Python type hints
+
+If you already use type annotations, Pydantic turns them into real runtime validation with minimal additional code.
+
+2. Build APIs or backend services
+
+Pydantic integrates extremely well with frameworks like FastAPI, making request and response validation much easier.
+
+3. Need reliable and strict data parsing
+
+Pydantic automatically converts types (for example, converting strings to integers or datetimes) and validates them.
+# 4. Who maintains Pydantic today?
+These are the current maintainers of the Pydantic repository. 
+@samuelcolvin
+@Viicos
+@dmontagu
+@alexmojaki
+@adriangb
+@Kludex
+@davidhewitt
+@hramezani
+# 5. Who benefits most from Pydantic’s data validation features?
+1. Backend and API developers
+
+They rely on clean, structured input. Pydantic ensures that request data is validated, typed, and safe before being used in the application.
+
+2. FastAPI users
+
+FastAPI is built around Pydantic models, so anyone building APIs with FastAPI gains strong validation and automatic documentation from it.
+
+3. Data engineers
+
+When working with data pipelines, ETL processes, or external data sources, Pydantic helps ensure incoming data is consistent and correctly typed.
